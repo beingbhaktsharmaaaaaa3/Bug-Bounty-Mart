@@ -22,14 +22,16 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
+# 3. Set difficulty (edit config.py first)
+nano config.py  # Change DIFFICULTY = 'easy, medium, hard'
+
 # Run the application
 python app.py
 
 # Access the lab
-http://127.0.0.1:5000
-
-# CTF Mode
-http://127.0.0.1:5000/ctf
+Main site: http://127.0.0.1:5000
+CTF mode:  http://127.0.0.1:5000/ctf
+Difficulty info: http://127.0.0.1:5000/difficulty
 ```
 
 ## Default Credentials
