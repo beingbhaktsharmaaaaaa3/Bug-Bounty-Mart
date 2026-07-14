@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Clickjacking Demo — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="card" style="text-align: center; padding: 3rem;">
+        <i class="fas fa-mouse-pointer fa-3x" style="color: var(--warning); margin-bottom: 1rem;"></i>
+        <h1>Clickjacking Demo</h1>
+        <p style="color: var(--text-muted); margin-bottom: 2rem;">This page is intentionally missing X-Frame-Options header</p>
+        <span class="badge badge-danger">CTF Challenge</span>
+
+        <div style="margin-top: 2rem; padding: 2rem; background: var(--bg); border-radius: 12px;">
+            <h3>Why is this vulnerable?</h3>
+            <p style="color: var(--text-muted); margin: 1rem 0;">
+                Without <code>X-Frame-Options: DENY</code> or <code>Content-Security-Policy: frame-ancestors 'none'</code>,<br>
+                this page can be embedded in an iframe on any attacker-controlled website.
+            </p>
+            <p style="color: var(--text-muted);">
+                An attacker can overlay invisible elements to trick users into clicking<br>
+                buttons or links they didn't intend to click.
+            </p>
+        </div>
+
+        <div style="margin-top: 2rem;">
+            <button class="btn btn-primary btn-lg" onclick="alert('You clicked the button!')">
+                <i class="fas fa-gift"></i> Claim Free Prize
+            </button>
+        </div>
+
+        <div style="margin-top: 2rem; padding: 1.5rem; background: rgba(99,102,241,0.05); border-radius: 12px;">
+            <h4>How to exploit:</h4>
+            <ol style="text-align: left; color: var(--text-muted); margin-top: 1rem; line-height: 2;">
+                <li>Create an HTML page with an iframe pointing to this URL</li>
+                <li>Position the iframe and overlay a transparent div on top</li>
+                <li>Trick the user into clicking what appears to be a harmless button</li>
+                <li>The click actually triggers the action on this framed page</li>
+            </ol>
+            <p style="margin-top: 1rem; color: var(--primary);">Flag: <code>ctf{clickjack_***}</code></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}2FA Verification — BugBountyMart{% endblock %}
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <i class="fas fa-shield-alt fa-2x" style="color: var(--primary);"></i>
+            <h2>Two-Factor Authentication</h2>
+            <p>Enter your 2FA code or backup code</p>
+            <span class="badge badge-warning">CTF Challenge</span>
+        </div>
+        {% if message %}
+            <div class="alert alert-danger">{{ message }}</div>
+        {% endif %}
+        <form method="POST">
+            <div class="form-group">
+                <label>2FA Code (6 digits)</label>
+                <input type="text" name="code" class="form-control" placeholder="000000" maxlength="6">
+            </div>
+            <div class="form-group">
+                <label>OR Backup Code</label>
+                <input type="text" name="backup_code" class="form-control" placeholder="Try brute forcing backup codes">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Verify</button>
+        </form>
+        <div class="auth-footer">
+            <p><strong>Hint:</strong> Can you bypass 2FA? Check for predictable backup codes.</p>
+            <p>Try common backup code patterns: 000000, 111111, sequential numbers.</p>
+            <p>Flag: <code>ctf{2fa_bypass_***}</code></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

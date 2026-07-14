@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Union-Based SQLi — BugBountyMart{% endblock %}
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <i class="fas fa-database fa-2x" style="color: var(--primary);"></i>
+            <h2>Union-Based SQLi Challenge</h2>
+            <p>Extract data using UNION SELECT</p>
+            <span class="badge badge-primary">CTF Challenge</span>
+        </div>
+        {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+        {% if users %}
+            <div class="alert alert-success">
+                <strong>Query returned {{ users|length }} user(s):</strong>
+                <ul style="margin-top: 0.5rem;">
+                {% for u in users %}
+                    <li>{{ u.username }} | {{ u.email }} | Role: {{ u.role }} | Admin: {{ u.is_admin }}</li>
+                {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+        <form method="POST">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" class="form-control" placeholder="Try: ' UNION SELECT * FROM users --">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" class="form-control" placeholder="Anything">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Login</button>
+        </form>
+        <div class="auth-footer">
+            <p><strong>Hint:</strong> Use UNION SELECT to combine results. Match column count first.</p>
+            <p>Try: <code>' UNION SELECT null,null,null,null,null,null,null FROM users --</code></p>
+            <p>Flag: <code>ctf{sqli_union_based_***}</code></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

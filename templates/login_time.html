@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Time-Based SQLi — BugBountyMart{% endblock %}
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <i class="fas fa-clock fa-2x" style="color: var(--danger);"></i>
+            <h2>Time-Based SQLi Challenge</h2>
+            <p>Extract data using time delays</p>
+            <span class="badge badge-danger">CTF Challenge</span>
+        </div>
+        {% if message %}
+            <div class="alert alert-info">{{ message }}</div>
+        {% endif %}
+        <form method="POST">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" class="form-control" placeholder="Try: admin' AND (SELECT * FROM (SELECT(SLEEP(5)))a)">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" class="form-control" placeholder="Anything">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Login</button>
+        </form>
+        <div class="auth-footer">
+            <p><strong>Hint:</strong> Use time delays to extract data when no visible output changes.</p>
+            <p>Try: <code>' OR (SELECT CASE WHEN (username='admin') THEN randomblob(1000000000) ELSE 0 END FROM users LIMIT 1) --</code></p>
+            <p>Flag: <code>ctf{sqli_time_based_***}</code></p>
+        </div>
+    </div>
+</div>
+{% endblock %}
