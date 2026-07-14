@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Checkout — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Checkout</h1>
+    <div class="checkout-grid">
+        <div class="checkout-form">
+            <form method="POST" action="{{ url_for('checkout') }}">
+                <div class="card">
+                    <h3>Shipping Information</h3>
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" class="form-control" placeholder="John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label>Address</label>
+                        <input type="text" class="form-control" placeholder="123 Main St">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>City</label>
+                            <input type="text" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>ZIP</label>
+                            <input type="text" class="form-control">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Payment Method</h3>
+                    <div class="form-group">
+                        <label>Card Number</label>
+                        <input type="text" class="form-control" placeholder="**** **** **** ****">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Expiry</label>
+                            <input type="text" class="form-control" placeholder="MM/YY">
+                        </div>
+                        <div class="form-group">
+                            <label>CVC</label>
+                            <input type="text" class="form-control" placeholder="123">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Order Summary</h3>
+                    {% for item in products %}
+                    <div class="summary-row">
+                        <span>{{ item.product.name }} x{{ item.qty }}</span>
+                        <span>${{ '%.2f'|format(item.price * item.qty) }}</span>
+                    </div>
+                    {% endfor %}
+                    <div class="form-group">
+                        <label>Coupon Code</label>
+                        <input type="text" name="coupon" class="form-control" placeholder="Try: WELCOME10, FLASH50, SINGLEUSE">
+                    </div>
+                    <!-- VULNERABLE: Client-controlled total for business logic practice -->
+                    <input type="hidden" name="total" value="{{ total }}">
+                    <div class="summary-total">
+                        <strong>Total: ${{ '%.2f'|format(total) }}</strong>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg btn-block">Place Order</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Shopping Cart — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Shopping Cart</h1>
+    {% if products %}
+        <div class="cart-table">
+            <div class="cart-header">
+                <span>Product</span>
+                <span>Price</span>
+                <span>Qty</span>
+                <span>Total</span>
+            </div>
+            {% for item in products %}
+            <div class="cart-row">
+                <div class="cart-product">
+                    <i class="fas fa-microchip"></i>
+                    <span>{{ item.product.name }}</span>
+                </div>
+                <span>${{ item.price }}</span>
+                <span>{{ item.qty }}</span>
+                <span>${{ '%.2f'|format(item.price * item.qty) }}</span>
+            </div>
+            {% endfor %}
+            <div class="cart-total">
+                <strong>Total: ${{ '%.2f'|format(total) }}</strong>
+            </div>
+        </div>
+        <a href="{{ url_for('checkout') }}" class="btn btn-primary btn-lg btn-block">Proceed to Checkout</a>
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-shopping-cart fa-3x"></i>
+            <p>Your cart is empty</p>
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Start Shopping</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="admin-header">
+        <h1><i class="fas fa-shield-alt"></i> Admin Dashboard</h1>
+        <span class="badge badge-danger">ADMIN ONLY</span>
+    </div>
+
+    <div class="admin-grid">
+        <div class="card">
+            <h3>Users</h3>
+            <table class="data-table">
+                <thead>
+                    <tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Admin</th></tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.email }}</td>
+                        <td><span class="badge badge-primary">{{ user.role }}</span></td>
+                        <td>{% if user.is_admin %}<i class="fas fa-check" style="color:var(--success)"></i>{% else %}<i class="fas fa-times" style="color:var(--danger)"></i>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h3>Orders</h3>
+            <table class="data-table">
+                <thead>
+                    <tr><th>ID</th><th>User</th><th>Items</th><th>Total</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    {% for order in orders %}
+                    <tr>
+                        <td><a href="{{ url_for('order', order_id=order.id) }}">#{{ order.id }}</a></td>
+                        <td>{{ order.user_id }}</td>
+                        <td>{{ order.items }}</td>
+                        <td>${{ order.total }}</td>
+                        <td><span class="badge badge-warning">{{ order.status }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="admin-tools">
+        <div class="card">
+            <h3>Network Diagnostics</h3>
+            <form method="POST" action="{{ url_for('admin_ping') }}">
+                <div class="form-group">
+                    <label>Host to Ping</label>
+                    <input type="text" name="host" class="form-control" placeholder="127.0.0.1" value="127.0.0.1">
+                </div>
+                <button type="submit" class="btn btn-primary">Ping Host</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3>URL Fetcher</h3>
+            <form method="POST" action="{{ url_for('admin_fetch') }}">
+                <div class="form-group">
+                    <label>URL to Fetch</label>
+                    <input type="url" name="url" class="form-control" placeholder="https://example.com">
+                </div>
+                <button type="submit" class="btn btn-primary">Fetch URL</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3>Template Engine</h3>
+            <form method="POST" action="{{ url_for('admin_greeting') }}">
+                <div class="form-group">
+                    <label>Template</label>
+                    <textarea name="template" class="form-control" rows="3">Hello, {{name}}!</textarea>
+                </div>
+                <div class="form-group">
+                    <label>Name Variable</label>
+                    <input type="text" name="name" class="form-control" value="Admin">
+                </div>
+                <button type="submit" class="btn btn-primary">Render</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3>File Viewer</h3>
+            <form method="GET" action="{{ url_for('admin_view_file') }}">
+                <div class="form-group">
+                    <label>File Path</label>
+                    <input type="text" name="file" class="form-control" value="app.py">
+                </div>
+                <button type="submit" class="btn btn-primary">View File</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Contact Messages</h3>
+        <table class="data-table">
+            <thead>
+                <tr><th>ID</th><th>Name</th><th>Email</th><th>Subject</th><th>Webhook</th></tr>
+            </thead>
+            <tbody>
+                {% for msg in messages %}
+                <tr>
+                    <td>{{ msg.id }}</td>
+                    <td>{{ msg.name|safe }}</td>  <!-- XSS -->
+                    <td>{{ msg.email }}</td>
+                    <td>{{ msg.subject|safe }}</td>  <!-- XSS -->
+                    <td>{{ msg.webhook_url }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

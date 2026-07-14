@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}API Documentation — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>BugBountyMart API</h1>
+    <p>Our REST API allows developers to integrate with our platform.</p>
+
+    <div class="card">
+        <h3>Authentication</h3>
+        <p>Include JWT token in Authorization header:</p>
+        <pre class="code-block">Authorization: Bearer &lt;token&gt;</pre>
+        <p>Obtain token via <code>POST /api/login</code></p>
+    </div>
+
+    <div class="card">
+        <h3>Endpoints</h3>
+        <table class="data-table">
+            <thead>
+                <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>POST</td><td>/api/login</td><td>Authenticate user</td></tr>
+                <tr><td>POST</td><td>/api/register</td><td>Register new user</td></tr>
+                <tr><td>GET</td><td>/api/user/&lt;id&gt;</td><td>Get user profile</td></tr>
+                <tr><td>GET</td><td>/api/search?q=&lt;query&gt;</td><td>Search products</td></tr>
+                <tr><td>POST</td><td>/graphql</td><td>GraphQL endpoint</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Example: Login</h3>
+        <pre class="code-block">curl -X POST http://127.0.0.1:5000/api/login   -H "Content-Type: application/json"   -d '{"username":"alice","password":"password"}'</pre>
+    </div>
+</div>
+{% endblock %}

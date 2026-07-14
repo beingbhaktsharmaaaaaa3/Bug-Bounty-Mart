@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Order #{{ order.id }} — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="order-confirmation">
+        <i class="fas fa-check-circle fa-3x" style="color: var(--success);"></i>
+        <h1>Order Confirmed!</h1>
+        <p>Thank you for your purchase.</p>
+    </div>
+
+    <div class="card">
+        <h3>Order Details #{{ order.id }}</h3>
+        <div class="order-info">
+            <p><strong>Order ID:</strong> {{ order.id }}</p>
+            <p><strong>User ID:</strong> {{ order.user_id }}</p>
+            <p><strong>Items:</strong> {{ order.items }}</p>
+            <p><strong>Total:</strong> ${{ order.total }}</p>
+            <p><strong>Status:</strong> <span class="badge badge-warning">{{ order.status }}</span></p>
+            {% if order.coupon %}
+                <p><strong>Coupon Used:</strong> {{ order.coupon }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Export Order</h3>
+        <p>Import your order data via XML (for enterprise integrations):</p>
+        <form method="POST" action="{{ url_for('export_order', order_id=order.id) }}" enctype="text/plain">
+            <div class="form-group">
+                <textarea name="xml_data" class="form-control" rows="6" placeholder="Paste XML here..."><?xml version="1.0"?>
+<!DOCTYPE order [
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<order>
+  <id>{{ order.id }}</id>
+  <items>&xxe;</items>
+</order></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Import XML</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

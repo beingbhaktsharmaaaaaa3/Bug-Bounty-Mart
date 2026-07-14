@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="breadcrumb">
+        <a href="{{ url_for('index') }}">Home</a> <i class="fas fa-chevron-right"></i>
+        <a href="{{ url_for('search') }}">Products</a> <i class="fas fa-chevron-right"></i>
+        <span>{{ product.name }}</span>
+    </div>
+
+    <div class="product-detail">
+        <div class="product-detail-image">
+            <i class="fas fa-microchip fa-5x" style="color: var(--primary);"></i>
+        </div>
+        <div class="product-detail-info">
+            <span class="badge badge-primary">{{ product.category }}</span>
+            <h1>{{ product.name }}</h1>
+            <p class="text-muted">{{ product.description }}</p>
+            <div class="product-price-large">${{ product.price }}</div>
+            <form method="POST" action="{{ url_for('add_to_cart') }}">
+                <input type="hidden" name="product_id" value="{{ product.id }}">
+                <input type="hidden" name="price" value="{{ product.price }}">
+                <div class="form-group-inline">
+                    <label>Quantity:</label>
+                    <input type="number" name="qty" value="1" min="1" class="form-control" style="width:80px">
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="fas fa-cart-plus"></i> Add to Cart
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- VULNERABLE: DOM XSS — hash content rendered in innerHTML -->
+    <div id="share-section" class="share-section">
+        <h3>Share this product</h3>
+        <p>Share link: <code id="share-link">{{ url_for('product', product_id=product.id, _external=True) }}</code></p>
+        <div id="share-msg"></div>
+    </div>
+
+    <div class="reviews-section">
+        <h3>Customer Reviews</h3>
+        {% if reviews %}
+            {% for review in reviews %}
+                <div class="review-card">
+                    <div class="review-header">
+                        <strong>{{ review.username }}</strong>
+                        <div class="stars">
+                            {% for i in range(review.rating) %}<i class="fas fa-star"></i>{% endfor %}
+                        </div>
+                    </div>
+                    <!-- VULNERABLE: Stored XSS — content rendered without escaping -->
+                    <p>{{ review.content|safe }}</p>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-muted">No reviews yet. Be the first!</p>
+        {% endif %}
+
+        {% if session.get('user_id') %}
+            <div class="review-form">
+                <h4>Write a Review</h4>
+                <form method="POST" action="{{ url_for('add_review', product_id=product.id) }}">
+                    <div class="form-group">
+                        <label>Rating</label>
+                        <select name="rating" class="form-control">
+                            <option value="5">5 Stars</option>
+                            <option value="4">4 Stars</option>
+                            <option value="3">3 Stars</option>
+                            <option value="2">2 Stars</option>
+                            <option value="1">1 Star</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Review</label>
+                        <textarea name="content" class="form-control" rows="4" placeholder="Share your experience..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit Review</button>
+                </form>
+            </div>
+        {% else %}
+            <p><a href="{{ url_for('login', return_to=request.url) }}">Login</a> to write a review.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    // VULNERABLE: DOM XSS via location.hash
+    var hash = location.hash.slice(1);
+    if (hash) {
+        document.getElementById('share-msg').innerHTML = decodeURIComponent(hash);
+    }
+</script>
+{% endblock %}

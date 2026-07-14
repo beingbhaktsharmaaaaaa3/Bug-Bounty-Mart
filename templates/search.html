@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Search — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="search-header">
+        <h1>Search Products</h1>
+        <form method="GET" class="search-form-large">
+            <input type="text" name="q" value="{{ q }}" class="form-control search-input" placeholder="Search for laptops, headphones, accessories...">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
+        </form>
+    </div>
+
+    {% if q %}
+        <div class="search-results">
+            <p class="text-muted">Results for: <strong>{{ q|safe }}</strong></p>  <!-- VULNERABLE: XSS -->
+            {% if results %}
+                <div class="product-grid">
+                    {% for product in results %}
+                    <div class="product-card">
+                        <div class="product-image">
+                            <i class="fas fa-microchip fa-3x" style="color: var(--primary);"></i>
+                        </div>
+                        <div class="product-info">
+                            <span class="product-category">{{ product.category }}</span>
+                            <h3 class="product-title">{{ product.name }}</h3>
+                            <p class="product-desc">{{ product.description[:80] }}...</p>
+                            <div class="product-footer">
+                                <span class="product-price">${{ product.price }}</span>
+                                <a href="{{ url_for('product', product_id=product.id) }}" class="btn btn-primary btn-sm">View</a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-search fa-3x"></i>
+                    <p>No products found for <strong>{{ q|safe }}</strong></p>  <!-- VULNERABLE: XSS -->
+                </div>
+            {% endif %}
+        </div>
+    {% else %}
+        <div class="popular-searches">
+            <h3>Popular Searches</h3>
+            <div class="tag-cloud">
+                <a href="?q=laptop" class="tag">Laptop</a>
+                <a href="?q=headphone" class="tag">Headphones</a>
+                <a href="?q=keyboard" class="tag">Keyboard</a>
+                <a href="?q=webcam" class="tag">Webcam</a>
+                <a href="?q=accessories" class="tag">Accessories</a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
