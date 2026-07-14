@@ -45,6 +45,8 @@ A realistic e-commerce web application designed for practicing bug bounty huntin
 ### Option 1: Local Python
 ```bash
 cd bugbounty_lab
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 python app.py
 # Open http://127.0.0.1:5000
