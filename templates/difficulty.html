@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Difficulty Settings — BugBountyMart{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 800px; margin: 3rem auto;">
+    <div class="card" style="text-align: center; padding: 3rem;">
+        <i class="fas fa-cog fa-3x" style="color: var(--primary); margin-bottom: 1rem;"></i>
+        <h1>Current Difficulty: <span style="color: var(--primary);">{{ difficulty.upper() }}</span></h1>
+        <p style="color: var(--text-muted); margin: 1rem 0;">Points per challenge: <strong>{{ points }}</strong></p>
+        
+        <div style="margin: 2rem 0; padding: 1.5rem; background: var(--bg); border-radius: 12px; text-align: left;">
+            <h3>Active Configuration:</h3>
+            <ul style="color: var(--text-muted); line-height: 2; margin-top: 1rem;">
+                <li>SQL Verbose Errors: {{ config.sqli_verbose_errors }}</li>
+                <li>SQL Show Query: {{ config.sqli_show_query }}</li>
+                <li>XSS Filter Level: {{ config.xss_filter_level }}</li>
+                <li>File Upload Checks: Extension={{ config.upload_check_extension }}, MIME={{ config.upload_check_mime }}</li>
+                <li>Command Injection Filter: {{ config.cmdi_filter_chars or 'None' }}</li>
+                <li>SSRF Block Private IPs: {{ config.ssrf_block_private_ips }}</li>
+                <li>JWT Weak Secret in Source: {{ config.jwt_weak_secret_in_source }}</li>
+                <li>JWT None Algorithm: {{ config.jwt_none_alg_accepted }}</li>
+                <li>Rate Limiting: {{ config.auth_rate_limit }}</li>
+                <li>CSRF Token Required: {{ config.csrf_token_required }}</li>
+                <li>Error Stacktrace: {{ config.error_show_stacktrace }}</li>
+                <li>Git/Env Exposed: {{ config.git_exposed }} / {{ config.env_exposed }}</li>
+            </ul>
+        </div>
+        
+        <div style="padding: 1.5rem; background: rgba(234,179,8,0.05); border-radius: 12px; border-left: 3px solid var(--warning);">
+            <p><i class="fas fa-info-circle"></i> <strong>To change difficulty:</strong></p>
+            <ol style="text-align: left; color: var(--text-muted); line-height: 2; margin-top: 0.5rem;">
+                <li>Open <code>config.py</code> in a text editor</li>
+                <li>Change <code>DIFFICULTY = '{{ difficulty }}'</code> to 'easy', 'medium', or 'hard'</li>
+                <li>Save the file</li>
+                <li>Restart the Flask app: <code>python app_v2.py</code></li>
+            </ol>
+        </div>
+    </div>
+</div>
+{% endblock %}
