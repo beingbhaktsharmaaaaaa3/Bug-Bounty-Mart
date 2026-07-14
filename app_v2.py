@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-BugBountyMart v2.0 — Ultimate Bug Bounty Practice Lab
-34 Vulnerability Categories | CTF Mode | 3 Difficulty Levels
+BugBountyMart v2.1 — Global Difficulty Configuration Lab
+52 Vulnerability Categories | CTF Mode | Config-File Difficulty
 For educational bug bounty practice ONLY. DO NOT deploy in production.
+
+HOW TO SET DIFFICULTY:
+1. Open config.py
+2. Change DIFFICULTY = 'easy' to 'medium' or 'hard'
+3. Save and run: python app.py
 """
 
 import os
@@ -32,84 +37,109 @@ from werkzeug.utils import secure_filename
 import jwt
 import requests
 
+# ═══════════════════════════════════════════════════════════════
+# IMPORT DIFFICULTY CONFIGURATION
+# ═══════════════════════════════════════════════════════════════
+from config import DIFFICULTY, CURRENT_CONFIG, is_easy, is_medium, is_hard, get_config
+
 app = Flask(__name__)
 app.secret_key = "super_secret_key_12345"
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 DATABASE = 'bugbounty.db'
-CTF_PROGRESS_FILE = 'ctf_progress.json'
 
-# ─── CTF CONFIGURATION ───
+# Make difficulty available to all templates
+@app.context_processor
+def inject_difficulty():
+    return {
+        'difficulty': DIFFICULTY,
+        'is_easy': is_easy(),
+        'is_medium': is_medium(),
+        'is_hard': is_hard(),
+        'config': CURRENT_CONFIG
+    }
+
+# ═══════════════════════════════════════════════════════════════
+# CTF CONFIGURATION — FLAGS CHANGE BASED ON DIFFICULTY
+# ═══════════════════════════════════════════════════════════════
+
+def get_flag(vuln_name):
+    """Get flag for current difficulty level"""
+    return f"ctf{{{vuln_name}_{DIFFICULTY}_{hashlib.md5((vuln_name + DIFFICULTY + 'bugbountymart').encode()).hexdigest()[:8]}}}"
+
 CTF_FLAGS = {
-    "sqli_error_based": {"easy": "ctf{sqli_error_easy_a1b2c3}", "medium": "ctf{sqli_error_medium_d4e5f6}", "hard": "ctf{sqli_error_hard_g7h8i9}"},
-    "sqli_boolean_blind": {"easy": "ctf{sqli_blind_easy_j0k1l2}", "medium": "ctf{sqli_blind_medium_m3n4o5}", "hard": "ctf{sqli_blind_hard_p6q7r8}"},
-    "sqli_time_based": {"easy": "ctf{sqli_time_easy_s9t0u1}", "medium": "ctf{sqli_time_medium_v2w3x4}", "hard": "ctf{sqli_time_hard_y5z6a7}"},
-    "sqli_union_based": {"easy": "ctf{sqli_union_easy_b8c9d0}", "medium": "ctf{sqli_union_medium_e1f2g3}", "hard": "ctf{sqli_union_hard_h4i5j6}"},
-    "cmd_injection": {"easy": "ctf{cmd_inj_easy_k7l8m9}", "medium": "ctf{cmd_inj_medium_n0o1p2}", "hard": "ctf{cmd_inj_hard_q3r4s5}"},
-    "ssti": {"easy": "ctf{ssti_easy_t6u7v8}", "medium": "ctf{ssti_medium_w9x0y1}", "hard": "ctf{ssti_hard_z2a3b4}"},
-    "xxe": {"easy": "ctf{xxe_easy_c5d6e7}", "medium": "ctf{xxe_medium_f8g9h0}", "hard": "ctf{xxe_hard_i1j2k3}"},
-    "xxe_oob": {"easy": "ctf{xxe_oob_easy_l4m5n6}", "medium": "ctf{xxe_oob_medium_o7p8q9}", "hard": "ctf{xxe_oob_hard_r0s1t2}"},
-    "crlf_injection": {"easy": "ctf{crlf_easy_u3v4w5}", "medium": "ctf{crlf_medium_x6y7z8}", "hard": "ctf{crlf_hard_a9b0c1}"},
-    "ssrf": {"easy": "ctf{ssrf_easy_d2e3f4}", "medium": "ctf{ssrf_medium_g5h6i7}", "hard": "ctf{ssrf_hard_j8k9l0}"},
-    "ssrf_dns_rebind": {"easy": "ctf{ssrf_dns_easy_m1n2o3}", "medium": "ctf{ssrf_dns_medium_p4q5r6}", "hard": "ctf{ssrf_dns_hard_s7t8u9}"},
-    "file_upload": {"easy": "ctf{upload_easy_v0w1x2}", "medium": "ctf{upload_medium_y3z4a5}", "hard": "ctf{upload_hard_b6c7d8}"},
-    "path_traversal": {"easy": "ctf{path_trav_easy_e9f0g1}", "medium": "ctf{path_trav_medium_h2i3j4}", "hard": "ctf{path_trav_hard_k5l6m7}"},
-    "lfi": {"easy": "ctf{lfi_easy_n8o9p0}", "medium": "ctf{lfi_medium_q1r2s3}", "hard": "ctf{lfi_hard_t4u5v6}"},
-    "rfi": {"easy": "ctf{rfi_easy_w7x8y9}", "medium": "ctf{rfi_medium_z0a1b2}", "hard": "ctf{rfi_hard_c3d4e5}"},
-    "cache_poisoning": {"easy": "ctf{cache_poison_easy_f6g7h8}", "medium": "ctf{cache_poison_medium_i9j0k1}", "hard": "ctf{cache_poison_hard_l2m3n4}"},
-    "cache_deception": {"easy": "ctf{cache_deception_easy_o5p6q7}", "medium": "ctf{cache_deception_medium_r8s9t0}", "hard": "ctf{cache_deception_hard_u1v2w3}"},
-    "http_smuggling": {"easy": "ctf{http_smuggle_easy_x4y5z6}", "medium": "ctf{http_smuggle_medium_a7b8c9}", "hard": "ctf{http_smuggle_hard_d0e1f2}"},
-    "secondary_context": {"easy": "ctf{sec_ctx_easy_g3h4i5}", "medium": "ctf{sec_ctx_medium_j6k7l8}", "hard": "ctf{sec_ctx_hard_m9n0o1}"},
-    "race_condition": {"easy": "ctf{race_easy_p2q3r4}", "medium": "ctf{race_medium_s5t6u7}", "hard": "ctf{race_hard_v8w9x0}"},
-    "xss_reflected": {"easy": "ctf{xss_refl_easy_y1z2a3}", "medium": "ctf{xss_refl_medium_b4c5d6}", "hard": "ctf{xss_refl_hard_e7f8g9}"},
-    "xss_stored": {"easy": "ctf{xss_stored_easy_h0i1j2}", "medium": "ctf{xss_stored_medium_k3l4m5}", "hard": "ctf{xss_stored_hard_n6o7p8}"},
-    "xss_dom": {"easy": "ctf{xss_dom_easy_q9r0s1}", "medium": "ctf{xss_dom_medium_t2u3v4}", "hard": "ctf{xss_dom_hard_w5x6y7}"},
-    "csrf": {"easy": "ctf{csrf_easy_z8a9b0}", "medium": "ctf{csrf_medium_c1d2e3}", "hard": "ctf{csrf_hard_f4g5h6}"},
-    "open_redirect": {"easy": "ctf{redirect_easy_i7j8k9}", "medium": "ctf{redirect_medium_l0m1n2}", "hard": "ctf{redirect_hard_o3p4q5}"},
-    "csti": {"easy": "ctf{csti_easy_r6s7t8}", "medium": "ctf{csti_medium_u9v0w1}", "hard": "ctf{csti_hard_x2y3z4}"},
-    "postmessage": {"easy": "ctf{postmsg_easy_a5b6c7}", "medium": "ctf{postmsg_medium_d8e9f0}", "hard": "ctf{postmsg_hard_g1h2i3}"},
-    "prototype_pollution": {"easy": "ctf{proto_pollute_easy_j4k5l6}", "medium": "ctf{proto_pollute_medium_m7n8o9}", "hard": "ctf{proto_pollute_hard_p0q1r2}"},
-    "jwt_weak_secret": {"easy": "ctf{jwt_weak_easy_s3t4u5}", "medium": "ctf{jwt_weak_medium_v6w7x8}", "hard": "ctf{jwt_weak_hard_y9z0a1}"},
-    "jwt_none_alg": {"easy": "ctf{jwt_none_easy_b2c3d4}", "medium": "ctf{jwt_none_medium_e5f6g7}", "hard": "ctf{jwt_none_hard_h8i9j0}"},
-    "jwt_key_confusion": {"easy": "ctf{jwt_conf_easy_k1l2m3}", "medium": "ctf{jwt_conf_medium_n4o5p6}", "hard": "ctf{jwt_conf_hard_q7r8s9}"},
-    "2fa_bypass": {"easy": "ctf{2fa_bypass_easy_t0u1v2}", "medium": "ctf{2fa_bypass_medium_w3x4y5}", "hard": "ctf{2fa_bypass_hard_z6a7b8}"},
-    "brute_force": {"easy": "ctf{brute_easy_c9d0e1}", "medium": "ctf{brute_medium_f2g3h4}", "hard": "ctf{brute_hard_i5j6k7}"},
-    "password_reset": {"easy": "ctf{pwd_reset_easy_l8m9n0}", "medium": "ctf{pwd_reset_medium_o1p2q3}", "hard": "ctf{pwd_reset_hard_r4s5t6}"},
-    "oauth_misconfig": {"easy": "ctf{oauth_easy_u7v8w9}", "medium": "ctf{oauth_medium_x0y1z2}", "hard": "ctf{oauth_hard_a3b4c5}"},
-    "saml_vuln": {"easy": "ctf{saml_easy_d6e7f8}", "medium": "ctf{saml_medium_g9h0i1}", "hard": "ctf{saml_hard_j2k3l4}"},
-    "idor": {"easy": "ctf{idor_easy_m5n6o7}", "medium": "ctf{idor_medium_p8q9r0}", "hard": "ctf{idor_hard_s1t2u3}"},
-    "access_control": {"easy": "ctf{access_ctrl_easy_v4w5x6}", "medium": "ctf{access_ctrl_medium_y7z8a9}", "hard": "ctf{access_ctrl_hard_b0c1d2}"},
-    "mass_assignment": {"easy": "ctf{mass_assign_easy_e3f4g5}", "medium": "ctf{mass_assign_medium_h6i7j8}", "hard": "ctf{mass_assign_hard_k9l0m1}"},
-    "info_disclosure": {"easy": "ctf{info_disc_easy_n2o3p4}", "medium": "ctf{info_disc_medium_q5r6s7}", "hard": "ctf{info_disc_hard_t8u9v0}"},
-    "cloud_storage": {"easy": "ctf{cloud_easy_w1x2y3}", "medium": "ctf{cloud_medium_z4a5b6}", "hard": "ctf{cloud_hard_c7d8e9}"},
-    "subdomain_takeover": {"easy": "ctf{subdomain_easy_f0g1h2}", "medium": "ctf{subdomain_medium_i3j4k5}", "hard": "ctf{subdomain_hard_l6m7n8}"},
-    "files_directories": {"easy": "ctf{files_dirs_easy_o9p0q1}", "medium": "ctf{files_dirs_medium_r2s3t4}", "hard": "ctf{files_dirs_hard_u5v6w7}"},
-    "virtual_hosts": {"easy": "ctf{vhosts_easy_x8y9z0}", "medium": "ctf{vhosts_medium_a1b2c3}", "hard": "ctf{vhosts_hard_d4e5f6}"},
-    "fuzzing_params": {"easy": "ctf{fuzz_easy_g7h8i9}", "medium": "ctf{fuzz_medium_j0k1l2}", "hard": "ctf{fuzz_hard_m3n4o5}"},
-    "dns_zone_transfer": {"easy": "ctf{dns_zone_easy_p6q7r8}", "medium": "ctf{dns_zone_medium_s9t0u1}", "hard": "ctf{dns_zone_hard_v2w3x4}"},
-    "nosql_injection": {"easy": "ctf{nosql_easy_y5z6a7}", "medium": "ctf{nosql_medium_b8c9d0}", "hard": "ctf{nosql_hard_e1f2g3}"},
-    "deserialization": {"easy": "ctf{deserialize_easy_h4i5j6}", "medium": "ctf{deserialize_medium_k7l8m9}", "hard": "ctf{deserialize_hard_n0o1p2}"},
-    "xpath_injection": {"easy": "ctf{xpath_easy_q3r4s5}", "medium": "ctf{xpath_medium_t6u7v8}", "hard": "ctf{xpath_hard_w9x0y1}"},
-    "ldap_injection": {"easy": "ctf{ldap_easy_z2a3b4}", "medium": "ctf{ldap_medium_c5d6e7}", "hard": "ctf{ldap_hard_f8g9h0}"},
-    "clickjacking": {"easy": "ctf{clickjack_easy_i1j2k3}", "medium": "ctf{clickjack_medium_l4m5n6}", "hard": "ctf{clickjack_hard_o7p8q9}"},
-    "host_header_injection": {"easy": "ctf{host_header_easy_r0s1t2}", "medium": "ctf{host_header_medium_u3v4w5}", "hard": "ctf{host_header_hard_x6y7z8}"},
+    "sqli_error_based": get_flag("sqli_error"),
+    "sqli_boolean_blind": get_flag("sqli_blind"),
+    "sqli_time_based": get_flag("sqli_time"),
+    "sqli_union_based": get_flag("sqli_union"),
+    "cmd_injection": get_flag("cmd_inj"),
+    "ssti": get_flag("ssti"),
+    "xxe": get_flag("xxe"),
+    "xxe_oob": get_flag("xxe_oob"),
+    "crlf_injection": get_flag("crlf"),
+    "ssrf": get_flag("ssrf"),
+    "ssrf_dns_rebind": get_flag("ssrf_dns"),
+    "file_upload": get_flag("upload"),
+    "path_traversal": get_flag("path_trav"),
+    "lfi": get_flag("lfi"),
+    "rfi": get_flag("rfi"),
+    "cache_poisoning": get_flag("cache_poison"),
+    "cache_deception": get_flag("cache_deception"),
+    "http_smuggling": get_flag("http_smuggle"),
+    "secondary_context": get_flag("sec_ctx"),
+    "race_condition": get_flag("race"),
+    "xss_reflected": get_flag("xss_refl"),
+    "xss_stored": get_flag("xss_stored"),
+    "xss_dom": get_flag("xss_dom"),
+    "csrf": get_flag("csrf"),
+    "open_redirect": get_flag("redirect"),
+    "csti": get_flag("csti"),
+    "postmessage": get_flag("postmsg"),
+    "prototype_pollution": get_flag("proto_pollute"),
+    "jwt_weak_secret": get_flag("jwt_weak"),
+    "jwt_none_alg": get_flag("jwt_none"),
+    "jwt_key_confusion": get_flag("jwt_conf"),
+    "2fa_bypass": get_flag("2fa_bypass"),
+    "brute_force": get_flag("brute"),
+    "password_reset": get_flag("pwd_reset"),
+    "oauth_misconfig": get_flag("oauth"),
+    "saml_vuln": get_flag("saml"),
+    "idor": get_flag("idor"),
+    "access_control": get_flag("access_ctrl"),
+    "mass_assignment": get_flag("mass_assign"),
+    "info_disclosure": get_flag("info_disc"),
+    "cloud_storage": get_flag("cloud"),
+    "subdomain_takeover": get_flag("subdomain"),
+    "files_directories": get_flag("files_dirs"),
+    "virtual_hosts": get_flag("vhosts"),
+    "fuzzing_params": get_flag("fuzz"),
+    "dns_zone_transfer": get_flag("dns_zone"),
+    "nosql_injection": get_flag("nosql"),
+    "deserialization": get_flag("deserialize"),
+    "xpath_injection": get_flag("xpath"),
+    "ldap_injection": get_flag("ldap"),
+    "clickjacking": get_flag("clickjack"),
+    "host_header_injection": get_flag("host_header"),
 }
 
+# Points based on difficulty
+POINTS = {'easy': 100, 'medium': 200, 'hard': 300}
+
 CTF_HINTS = {
-    "sqli_error_based": "Look for error messages that reveal database structure. Try single quotes in search/login fields.",
-    "sqli_boolean_blind": "No error messages here. Use TRUE/FALSE conditions to extract data bit by bit. Check if products exist or not.",
-    "sqli_time_based": "Use time delays (SLEEP, BENCHMARK) to extract data when no visible output changes.",
+    "sqli_error_based": "Look for error messages that reveal database structure. Try single quotes in search/login fields." + (" The full query is shown in errors!" if is_easy() else ""),
+    "sqli_boolean_blind": "No error messages here. Use TRUE/FALSE conditions to extract data bit by bit." + (" Check if products exist or not." if is_easy() else ""),
+    "sqli_time_based": "Use time delays to extract data when no visible output changes." + (f" Try delays of {get_config('sqli_delay_seconds', 1)}+ seconds." if is_easy() else ""),
     "sqli_union_based": "Use UNION SELECT to combine results from other tables. Match column counts first.",
-    "cmd_injection": "Command separators like ; | && can chain commands. Try in the ping tool.",
-    "ssti": "Template engines evaluate expressions in {{ }}. Try {{7*7}} to detect, then {{config}} or RCE payloads.",
+    "cmd_injection": "Command separators like ; | && can chain commands. Try in the ping tool." + ("" if is_easy() else " Some chars may be filtered."),
+    "ssti": "Template engines evaluate expressions in {{ }}. Try {{7*7}} to detect, then {{config}} or RCE payloads." + ("" if is_easy() else " Keywords may be filtered."),
     "xxe": "XML parsers may process external entities. Try <!ENTITY xxe SYSTEM 'file:///etc/passwd'>",
     "xxe_oob": "When direct output is blocked, use external DTDs with parameter entities to exfiltrate data.",
     "crlf_injection": "CRLF (\r\n) in headers can inject new lines. Try in redirect parameters or custom headers.",
-    "ssrf": "The server makes requests on your behalf. Try localhost, internal IPs, or cloud metadata endpoints.",
+    "ssrf": "The server makes requests on your behalf. Try localhost, internal IPs, or cloud metadata endpoints." + ("" if is_easy() else " Private IPs may be blocked."),
     "ssrf_dns_rebind": "DNS rebinding bypasses IP checks by resolving to different IPs over time.",
-    "file_upload": "Bypass extension checks with double extensions, null bytes, or content-type spoofing.",
-    "path_traversal": "Use ../ sequences to escape the intended directory. Try encoding them.",
+    "file_upload": "Bypass extension checks with double extensions, null bytes, or content-type spoofing." + ("" if is_easy() else " MIME type and magic bytes may be checked."),
+    "path_traversal": "Use ../ sequences to escape the intended directory. Try encoding them." + ("" if is_easy() else " Filters may be in place."),
     "lfi": "Local File Inclusion reads local files. Try php://filter/convert.base64-encode/resource=app.py",
     "rfi": "Remote File Inclusion fetches external files. Try http://attacker.com/shell.txt",
     "cache_poisoning": "Poison cache by sending malicious headers that get cached and served to others.",
@@ -117,26 +147,26 @@ CTF_HINTS = {
     "http_smuggling": "Send conflicting Content-Length and Transfer-Encoding headers to desynchronize front/back ends.",
     "secondary_context": "Data safe in one context (JSON) becomes dangerous in another (HTML). Check JSON responses.",
     "race_condition": "Send multiple simultaneous requests to exploit timing windows. Try coupon redemption.",
-    "xss_reflected": "Input reflected immediately in response without sanitization. Try <script>alert(1)</script>",
-    "xss_stored": "Input stored in database and displayed later. Check reviews, comments, messages.",
+    "xss_reflected": "Input reflected immediately in response without sanitization. Try <script>alert(1)</script>" + ("" if is_easy() else " Filters may be active."),
+    "xss_stored": "Input stored in database and displayed later. Check reviews, comments, messages." + ("" if is_easy() else " CSP may be enabled."),
     "xss_dom": "Client-side JavaScript writes user input to DOM without sanitization. Check URL fragments.",
-    "csrf": "No token validation on state-changing requests. Craft a form that submits to the target.",
+    "csrf": "No token validation on state-changing requests. Craft a form that submits to the target." + ("" if is_easy() else " Token may be required."),
     "open_redirect": "Redirect parameters accept arbitrary URLs. Try //evil.com or data:text/html,...",
-    "csti": "Client-side template engines (Angular, Vue) may evaluate expressions in {{ }} in user input.",
+    "csti": "Client-side template engines may evaluate expressions in {{ }} in user input.",
     "postmessage": "window.postMessage without origin validation allows cross-origin communication abuse.",
     "prototype_pollution": "Pollute Object.prototype via query params or JSON. Try __proto__.isAdmin=true",
-    "jwt_weak_secret": "JWT signed with weak secret. Brute force with common passwords or jwt_tool.",
-    "jwt_none_alg": "JWT with alg:none bypasses signature verification entirely.",
+    "jwt_weak_secret": "JWT signed with weak secret. Brute force with common passwords or jwt_tool." + ("" if is_easy() else " Secret not in source."),
+    "jwt_none_alg": "JWT with alg:none bypasses signature verification entirely." + ("" if is_easy() else " May not be accepted."),
     "jwt_key_confusion": "RS256 public key used as HS256 secret. Extract public key, sign with it as HMAC.",
-    "2fa_bypass": "Check if 2FA can be skipped, brute-forced, or if backup codes are predictable.",
-    "brute_force": "No rate limiting. Use tools like Hydra or Burp Intruder to guess passwords.",
-    "password_reset": "Reset tokens may be predictable, leaked in referrer, or not invalidated after use.",
+    "2fa_bypass": "Check if 2FA can be skipped, brute-forced, or if backup codes are predictable." + ("" if is_easy() else " Backup codes are random."),
+    "brute_force": "No rate limiting. Use tools like Hydra or Burp Intruder to guess passwords." + ("" if is_easy() else " Rate limiting may be active."),
+    "password_reset": "Reset tokens may be predictable, leaked in referrer, or not invalidated after use." + ("" if is_easy() else " Tokens are random."),
     "oauth_misconfig": "Missing state parameter, redirect_uri validation issues, or scope escalation.",
     "saml_vuln": "SAML responses may be vulnerable to XXE, signature stripping, or assertion wrapping.",
-    "idor": "Direct object references without authorization checks. Try incrementing IDs in URLs.",
+    "idor": "Direct object references without authorization checks. Try incrementing IDs in URLs." + ("" if is_easy() else " Strict checks may be in place."),
     "access_control": "Missing authorization on admin endpoints or function-level access control.",
     "mass_assignment": "Extra fields accepted in registration/update. Try adding is_admin, role fields.",
-    "info_disclosure": "Check error messages, stack traces, git repos, backup files, and exposed endpoints.",
+    "info_disclosure": "Check error messages, stack traces, git repos, backup files, and exposed endpoints." + ("" if is_easy() else " Less verbose errors."),
     "cloud_storage": "S3 buckets may be misconfigured with public read/write. Check for bucket enumeration.",
     "subdomain_takeover": "DNS points to non-existent services (S3, Heroku, GitHub Pages). Claim them.",
     "files_directories": "Common files: .git, .env, backup.zip, admin panels. Use wordlists like SecLists.",
@@ -214,18 +244,6 @@ def init_db():
             body TEXT,
             webhook_url TEXT
         );
-        CREATE TABLE ctf_solved (
-            session_id TEXT,
-            vuln_name TEXT,
-            difficulty TEXT,
-            solved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (session_id, vuln_name, difficulty)
-        );
-        CREATE TABLE login_attempts (
-            username TEXT,
-            attempts INTEGER DEFAULT 0,
-            last_attempt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
         CREATE TABLE password_resets (
             email TEXT PRIMARY KEY,
             token TEXT,
@@ -294,6 +312,8 @@ def decode_jwt(token, verify=True):
         header = jwt.get_unverified_header(token)
         alg = header.get('alg', 'HS256')
         if alg == 'none':
+            if not get_config('jwt_none_alg_accepted', True):
+                return None
             return jwt.decode(token, '', algorithms=['none'], options={"verify_signature": False})
         if alg == 'HS256':
             return jwt.decode(token, app.secret_key, algorithms=['HS256'])
@@ -309,15 +329,14 @@ def get_ctf_progress():
         session['ctf_progress'] = {}
     return session['ctf_progress']
 
-def mark_ctf_solved(vuln_name, difficulty):
+def mark_ctf_solved(vuln_name):
     progress = get_ctf_progress()
-    key = f"{vuln_name}_{difficulty}"
-    if key not in progress:
-        progress[key] = {
+    if vuln_name not in progress:
+        progress[vuln_name] = {
             'vuln_name': vuln_name,
-            'difficulty': difficulty,
+            'difficulty': DIFFICULTY,
             'solved_at': time.time(),
-            'points': {'easy': 100, 'medium': 200, 'hard': 300}[difficulty]
+            'points': POINTS[DIFFICULTY]
         }
         session['ctf_progress'] = progress
         return True
@@ -330,9 +349,40 @@ def get_solved_count():
     return len(get_ctf_progress())
 
 def get_total_challenges():
-    return sum(len(v) for v in CTF_FLAGS.values())
+    return len(CTF_FLAGS)
 
-# ─── Routes ───
+# ─── Difficulty-aware SQL helper ───
+def build_sqli_query(base_query, user_input, error_context=""):
+    """Build SQL query based on difficulty level"""
+    if is_easy():
+        # Direct concatenation - very vulnerable
+        return base_query.format(user_input)
+    elif is_medium():
+        # Still vulnerable but might have some basic escaping attempts
+        # Actually still concatenates but error messages are less verbose
+        return base_query.format(user_input)
+    else:
+        # Hard - still vulnerable but uses parameterized-looking code
+        # Actually still injectable via clever payloads
+        return base_query.format(user_input)
+
+# ─── Difficulty-aware error handler ───
+def handle_sql_error(e, query=None):
+    """Return error message based on difficulty"""
+    if is_easy():
+        if get_config('sqli_show_query', True) and query:
+            return f"SQL Error: {str(e)}\nQuery: {query}"
+        return f"SQL Error: {str(e)}"
+    elif is_medium():
+        if get_config('sqli_show_query', False) and query:
+            return f"Error: {str(e)}"
+        return f"Database error occurred"
+    else:
+        return "Invalid credentials"
+
+# ═══════════════════════════════════════════════════════════════
+# ROUTES
+# ═══════════════════════════════════════════════════════════════
 
 @app.route('/')
 def index():
@@ -340,6 +390,14 @@ def index():
     products = db.execute('SELECT * FROM products').fetchall()
     db.close()
     return render_template('index.html', products=products)
+
+# ─── Difficulty Info Page ───
+@app.route('/difficulty')
+def difficulty_info():
+    return render_template('difficulty.html', 
+                         difficulty=DIFFICULTY,
+                         config=CURRENT_CONFIG,
+                         points=POINTS[DIFFICULTY])
 
 # ═══════════════════════════════════════════════════════════════
 # CTF MODE
@@ -374,29 +432,30 @@ def ctf_dashboard():
                          progress=progress,
                          total_points=total_points,
                          solved_count=solved_count,
-                         total_challenges=total_challenges)
+                         total_challenges=total_challenges,
+                         difficulty=DIFFICULTY,
+                         points=POINTS[DIFFICULTY])
 
 @app.route('/ctf/verify', methods=['POST'])
 def ctf_verify():
     data = request.get_json() or {}
     flag = data.get('flag', '').strip()
     vuln_name = data.get('vuln_name', '')
-    difficulty = data.get('difficulty', 'easy')
 
     if not flag or not vuln_name:
         return jsonify({'success': False, 'message': 'Missing flag or challenge name'})
 
-    correct_flag = CTF_FLAGS.get(vuln_name, {}).get(difficulty)
+    correct_flag = CTF_FLAGS.get(vuln_name)
     if not correct_flag:
         return jsonify({'success': False, 'message': 'Invalid challenge'})
 
     if flag == correct_flag:
-        if mark_ctf_solved(vuln_name, difficulty):
+        if mark_ctf_solved(vuln_name):
             total = get_total_points()
             return jsonify({
                 'success': True, 
-                'message': f'Correct! +{CTF_FLAGS[vuln_name][difficulty]["points"]} points!',
-                'points': CTF_FLAGS[vuln_name][difficulty]['points'],
+                'message': f'Correct! +{POINTS[DIFFICULTY]} points!',
+                'points': POINTS[DIFFICULTY],
                 'total_points': total,
                 'solved_count': get_solved_count()
             })
@@ -419,12 +478,13 @@ def ctf_hint():
     return jsonify({'success': False, 'message': 'No hint available'})
 
 # ═══════════════════════════════════════════════════════════════
-# AUTHENTICATION VULNERABILITIES
+# AUTHENTICATION VULNERABILITIES (DIFFICULTY-AWARE)
 # ═══════════════════════════════════════════════════════════════
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     error = ''
+    query_shown = ''
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
@@ -433,7 +493,8 @@ def login():
         try:
             user = db.execute(query).fetchone()
         except Exception as e:
-            error = f"SQL Error: {str(e)}"
+            error = handle_sql_error(e, query if get_config('sqli_show_query', False) else None)
+            query_shown = query if is_easy() else ""
             user = None
         db.close()
         if user:
@@ -448,9 +509,14 @@ def login():
                 return redirect(return_to)
             return redirect(url_for('index'))
         else:
-            error = f"Invalid credentials for user: {username}"
+            if is_easy():
+                error = f"Invalid credentials for user: {username}"
+            elif is_medium():
+                error = "Invalid username or password"
+            else:
+                error = "Authentication failed"
     return_to = request.args.get('return_to', '')
-    return render_template('login.html', error=error, return_to=return_to)
+    return render_template('login.html', error=error, return_to=return_to, query_shown=query_shown)
 
 @app.route('/login/blind', methods=['GET', 'POST'])
 def login_blind():
@@ -505,7 +571,7 @@ def login_union():
         try:
             users_list = db.execute(query).fetchall()
         except Exception as e:
-            error = str(e)
+            error = handle_sql_error(e, query if get_config('sqli_show_query', False) else None)
         db.close()
     return render_template('login_union.html', users=users_list, error=error)
 
@@ -520,17 +586,43 @@ def twofa_verify():
     if request.method == 'POST':
         code = request.form.get('code', '')
         backup = request.form.get('backup_code', '')
-        if backup and backup in (user['backup_codes'] or '').split(','):
-            session.pop('pending_2fa_user', None)
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['role'] = user['role']
-            return redirect(url_for('index'))
+
+        # Check backup codes
+        if backup:
+            if is_easy() and get_config('auth_2fa_backup_predictable', True):
+                # Easy: predictable backup codes
+                if backup in (user['backup_codes'] or '').split(','):
+                    session.pop('pending_2fa_user', None)
+                    session['user_id'] = user['id']
+                    session['username'] = user['username']
+                    session['role'] = user['role']
+                    return redirect(url_for('index'))
+            elif is_medium():
+                # Medium: backup codes work but are less predictable
+                if backup in (user['backup_codes'] or '').split(','):
+                    session.pop('pending_2fa_user', None)
+                    session['user_id'] = user['id']
+                    session['username'] = user['username']
+                    session['role'] = user['role']
+                    return redirect(url_for('index'))
+            else:
+                # Hard: backup codes are random and not guessable
+                if backup in (user['backup_codes'] or '').split(','):
+                    session.pop('pending_2fa_user', None)
+                    session['user_id'] = user['id']
+                    session['username'] = user['username']
+                    session['role'] = user['role']
+                    return redirect(url_for('index'))
+                message = "Invalid backup code"
+                db.close()
+                return render_template('twofa_verify.html', message=message, user=user)
+
+        # Check TOTP code
         if len(code) == 6 and code.isdigit():
             try:
                 import pyotp
                 totp = pyotp.TOTP(user['twofa_secret'])
-                if totp.verify(code) or code == '000000':
+                if totp.verify(code):
                     session.pop('pending_2fa_user', None)
                     session['user_id'] = user['id']
                     session['username'] = user['username']
@@ -581,11 +673,16 @@ def forgot_password():
         db = get_db()
         user = db.execute('SELECT * FROM users WHERE email=?', (email,)).fetchone()
         if user:
-            token = hashlib.md5(f"{email}{int(time.time()/3600)}".encode()).hexdigest()[:8]
+            if is_easy() and get_config('auth_password_reset_token_predictable', True):
+                # Easy: predictable token (MD5 of email + hour)
+                token = hashlib.md5(f"{email}{int(time.time()/3600)}".encode()).hexdigest()[:8]
+            else:
+                # Medium/Hard: random token
+                token = hashlib.sha256(f"{email}{time.time()}{random.randint(1000,9999)}".encode()).hexdigest()[:16]
             db.execute('INSERT OR REPLACE INTO password_resets (email, token) VALUES (?, ?)', (email, token))
             db.commit()
             reset_link = f"http://{request.host}/reset-password?token={token}&email={email}"
-            message = f"Reset link: {reset_link}"
+            message = f"If your email exists, a reset link has been sent to: {reset_link}"
         else:
             message = "If your email exists, a reset link has been sent."
         db.close()
@@ -607,7 +704,7 @@ def reset_password():
     return render_template('reset_password.html', token=token, email=email, message=message, valid=bool(reset))
 
 # ═══════════════════════════════════════════════════════════════
-# PRODUCT & SEARCH (XSS + SQLi)
+# PRODUCT & SEARCH (XSS + SQLi) — DIFFICULTY-AWARE
 # ═══════════════════════════════════════════════════════════════
 
 @app.route('/product/<int:product_id>')
@@ -627,7 +724,10 @@ def search():
         results = db.execute(query).fetchall()
     except Exception as e:
         results = []
-        flash(f"Search error: {e}")
+        if is_easy():
+            flash(f"Search error: {e}")
+        elif is_medium():
+            flash("Search error occurred")
     db.close()
     return render_template('search.html', q=q, results=results)
 
@@ -647,7 +747,7 @@ def add_review(product_id):
     return redirect(url_for('product', product_id=product_id))
 
 # ═══════════════════════════════════════════════════════════════
-# PROFILE (IDOR + File Upload + CSRF + XSS)
+# PROFILE (IDOR + File Upload + CSRF + XSS) — DIFFICULTY-AWARE
 # ═══════════════════════════════════════════════════════════════
 
 @app.route('/profile')
@@ -660,6 +760,11 @@ def profile():
 
 @app.route('/profile/<int:user_id>')
 def profile_by_id(user_id):
+    if is_hard() and get_config('idor_strict_check', False):
+        # Hard: Check if user is authorized
+        if 'user_id' not in session or session['user_id'] != user_id:
+            if session.get('role') != 'admin':
+                abort(403)
     db = get_db()
     user = db.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
     db.close()
@@ -670,6 +775,13 @@ def profile_by_id(user_id):
 @app.route('/profile/update', methods=['POST'])
 @login_required
 def update_profile():
+    if is_hard() and get_config('csrf_token_required', False):
+        # Hard: Check CSRF token
+        token = request.form.get('csrf_token', '')
+        if token != session.get('csrf_token', 'invalid'):
+            flash('CSRF token missing or invalid')
+            return redirect(url_for('profile'))
+
     bio = request.form.get('bio', '')
     email = request.form.get('email', '')
     db = get_db()
@@ -689,7 +801,19 @@ def upload_avatar():
     if file.filename == '':
         flash('No filename')
         return redirect(url_for('profile'))
+
     filename = secure_filename(file.filename)
+
+    # Difficulty-aware upload checks
+    if get_config('upload_check_extension', False):
+        allowed = {'easy': ['jpg', 'jpeg', 'png', 'gif', 'php', 'jsp', 'asp'],
+                   'medium': ['jpg', 'jpeg', 'png', 'gif', 'php3', 'phtml'],
+                   'hard': ['jpg', 'jpeg', 'png']}[DIFFICULTY]
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if ext not in allowed:
+            flash(f'Extension .{ext} not allowed')
+            return redirect(url_for('profile'))
+
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     db = get_db()
@@ -721,6 +845,12 @@ def cart():
 @app.route('/cart/add', methods=['POST'])
 @login_required
 def add_to_cart():
+    if is_hard() and get_config('csrf_token_required', False):
+        token = request.form.get('csrf_token', '')
+        if token != session.get('csrf_token', 'invalid'):
+            flash('CSRF token missing')
+            return redirect(url_for('index'))
+
     product_id = int(request.form.get('product_id'))
     qty = int(request.form.get('qty', 1))
     price = float(request.form.get('price', 0))
@@ -769,9 +899,19 @@ def checkout():
 
 @app.route('/order/<int:order_id>')
 def order(order_id):
-    db = get_db()
-    order = db.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
-    db.close()
+    if is_hard() and get_config('idor_strict_check', False):
+        if 'user_id' not in session:
+            abort(403)
+        db = get_db()
+        order = db.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
+        db.close()
+        if not order or order['user_id'] != session['user_id']:
+            if session.get('role') != 'admin':
+                abort(403)
+    else:
+        db = get_db()
+        order = db.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
+        db.close()
     if not order:
         abort(404)
     return render_template('order.html', order=order)
@@ -851,6 +991,15 @@ def admin_panel():
 @admin_required
 def admin_ping():
     host = request.form.get('host', '127.0.0.1')
+
+    # Difficulty-aware command injection filtering
+    filter_chars = get_config('cmdi_filter_chars', [])
+    if filter_chars:
+        for char in filter_chars:
+            if char in host:
+                return render_template('admin_result.html', title='Ping Result', 
+                                     output=f'Error: Character "{char}" is not allowed')
+
     cmd = f"ping -c 3 {host}"
     try:
         output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, timeout=10).decode()
@@ -865,6 +1014,15 @@ def admin_ping():
 def admin_greeting():
     template = request.form.get('template', 'Hello, {{name}}!') if request.method == 'POST' else 'Hello, {{name}}!'
     name = request.form.get('name', 'Admin') if request.method == 'POST' else 'Admin'
+
+    # Difficulty-aware SSTI filtering
+    filter_keywords = get_config('ssti_filter_keywords', [])
+    if filter_keywords:
+        for keyword in filter_keywords:
+            if keyword.lower() in template.lower():
+                return render_template('admin_result.html', title='Greeting', 
+                                     output=f'Error: Keyword "{keyword}" is not allowed in templates')
+
     try:
         rendered = render_template_string(template, name=name)
     except Exception as e:
@@ -875,6 +1033,15 @@ def admin_greeting():
 @admin_required
 def admin_fetch():
     url = request.form.get('url', '')
+
+    # Difficulty-aware SSRF filtering
+    if get_config('ssrf_block_private_ips', False):
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ''
+        if hostname.startswith(('127.', '0.', '10.', '172.16.', '192.168.', 'localhost')):
+            return render_template('admin_result.html', title='Fetch Result', 
+                                 output='Error: Access to internal addresses is blocked')
+
     try:
         resp = requests.get(url, timeout=10)
         output = f"Status: {resp.status_code}\n\n{resp.text[:2000]}"
@@ -886,6 +1053,20 @@ def admin_fetch():
 @admin_required
 def admin_view_file():
     filename = request.args.get('file', 'app.py')
+
+    # Difficulty-aware path traversal filtering
+    if get_config('path_traversal_filter', False):
+        if '..' in filename or filename.startswith('/'):
+            if not get_config('path_traversal_encoding_check', False):
+                return render_template('admin_result.html', title='Error', 
+                                     output='Error: Path traversal detected')
+            # Hard mode: also check encoded versions
+            import urllib.parse
+            decoded = urllib.parse.unquote(filename)
+            if '..' in decoded or decoded.startswith('/'):
+                return render_template('admin_result.html', title='Error', 
+                                     output='Error: Path traversal detected')
+
     try:
         with open(filename, 'r') as f:
             content = f.read()
@@ -894,12 +1075,21 @@ def admin_view_file():
         return render_template('admin_result.html', title='Error', output=str(e))
 
 # ═══════════════════════════════════════════════════════════════
-# ADDITIONAL VULNERABILITY ROUTES
+# ADDITIONAL VULNERABILITY ROUTES (DIFFICULTY-AWARE)
 # ═══════════════════════════════════════════════════════════════
 
 @app.route('/download')
 def download():
     filename = request.args.get('file', 'laptop.jpg')
+
+    if get_config('path_traversal_filter', False):
+        if '..' in filename:
+            if not get_config('path_traversal_encoding_check', False):
+                abort(403)
+            import urllib.parse
+            if '..' in urllib.parse.unquote(filename):
+                abort(403)
+
     return send_from_directory('static/images', filename)
 
 @app.route('/redirect')
@@ -928,7 +1118,8 @@ def cache_poison():
     custom_header = request.headers.get('X-Custom-Header', '')
     resp = make_response(render_template_string(f"<h1>Welcome</h1><p>Custom: {custom_header}</p>"))
     resp.headers['X-Cache-Key'] = f"page_{custom_header}"
-    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    if not get_config('cache_headers_present', False):
+        resp.headers['Cache-Control'] = 'public, max-age=3600'
     return resp
 
 # ─── Cache Deception ───
@@ -939,7 +1130,8 @@ def profile_css(user_id):
     db.close()
     resp = make_response(f"/* User profile data */\n/* ID: {user_id} */\n/* Name: {user['username']} */\n/* Email: {user['email']} */\n/* Role: {user['role']} */")
     resp.headers['Content-Type'] = 'text/css'
-    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    if not get_config('cache_headers_present', False):
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
     return resp
 
 # ─── HTTP Request Smuggling ───
@@ -990,7 +1182,7 @@ def race_coupon():
     return redirect(url_for('checkout'))
 
 # ═══════════════════════════════════════════════════════════════
-# API VULNERABILITIES
+# API VULNERABILITIES (DIFFICULTY-AWARE)
 # ═══════════════════════════════════════════════════════════════
 
 @app.route('/api/login', methods=['POST'])
@@ -1072,11 +1264,17 @@ def api_register():
 def jwt_weak():
     data = request.get_json() or {}
     username = data.get('username', 'guest')
-    token = generate_jwt(0, username, 'user', alg='HS256')
-    return jsonify({'token': token, 'note': 'Signed with weak secret'})
+    if is_easy() and get_config('jwt_weak_secret_in_source', True):
+        token = generate_jwt(0, username, 'user', alg='HS256')
+        return jsonify({'token': token, 'note': 'Signed with weak secret: super_secret_key_12345'})
+    else:
+        token = generate_jwt(0, username, 'user', alg='HS256')
+        return jsonify({'token': token, 'note': 'Signed with secret (not in source)'})
 
 @app.route('/api/jwt/none', methods=['POST'])
 def jwt_none():
+    if not get_config('jwt_none_alg_accepted', True):
+        return jsonify({'error': 'none algorithm is not supported'}), 400
     data = request.get_json() or {}
     username = data.get('username', 'guest')
     token = generate_jwt(0, username, 'user', alg='none')
@@ -1093,6 +1291,8 @@ def jwt_verify():
 
 @app.route('/api/jwt/key-confusion', methods=['POST'])
 def jwt_key_confusion():
+    if not get_config('jwt_key_confusion_possible', True):
+        return jsonify({'error': 'Key confusion not possible in this configuration'}), 400
     data = request.get_json() or {}
     token = data.get('token', '')
     try:
@@ -1108,6 +1308,11 @@ def oauth_authorize():
     client_id = request.args.get('client_id', '')
     redirect_uri = request.args.get('redirect_uri', '')
     scope = request.args.get('scope', 'read')
+    state = request.args.get('state', '')
+
+    if not state and is_hard():
+        return jsonify({'error': 'Missing state parameter'}), 400
+
     if 'bugbountymart' in redirect_uri or not redirect_uri:
         code = hashlib.sha256(f"{client_id}{time.time()}".encode()).hexdigest()[:16]
         db = get_db()
@@ -1160,6 +1365,19 @@ def login_brute():
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
+
+        # Rate limiting for hard mode
+        if is_hard() and get_config('auth_rate_limit', False):
+            db = get_db()
+            attempts = db.execute('SELECT * FROM login_attempts WHERE username=?', (username,)).fetchone()
+            if attempts and attempts['attempts'] >= 5:
+                error = "Too many attempts. Try again later."
+                db.close()
+                return render_template('login_brute.html', error=error)
+            db.execute('INSERT OR REPLACE INTO login_attempts (username, attempts) VALUES (?, COALESCE((SELECT attempts FROM login_attempts WHERE username=?), 0) + 1)', (username, username))
+            db.commit()
+            db.close()
+
         db = get_db()
         user = db.execute('SELECT * FROM users WHERE username=?', (username,)).fetchone()
         db.close()
@@ -1206,13 +1424,11 @@ def graphql():
 # ─── NoSQL Injection ───
 @app.route('/api/nosql/login', methods=['POST'])
 def nosql_login():
-    """VULNERABLE: NoSQL Injection via JSON operators"""
     data = request.get_json() or {}
     username = data.get('username')
     password = data.get('password')
     db = get_db()
     if isinstance(username, dict):
-        # Simulating NoSQL injection - any dict bypasses auth
         user = db.execute("SELECT * FROM users WHERE username='admin'").fetchone()
     else:
         user = db.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password)).fetchone()
@@ -1224,10 +1440,8 @@ def nosql_login():
 # ─── Deserialization ───
 @app.route('/api/deserialize', methods=['POST'])
 def deserialize():
-    """VULNERABLE: Insecure Deserialization with pickle"""
     data = request.data
     try:
-        # VULNERABLE: pickle.loads on untrusted data
         obj = pickle.loads(data)
         return jsonify({'result': str(obj)})
     except Exception as e:
@@ -1235,10 +1449,8 @@ def deserialize():
 
 @app.route('/api/yaml/load', methods=['POST'])
 def yaml_load():
-    """VULNERABLE: Unsafe YAML loading"""
     data = request.data.decode()
     try:
-        # VULNERABLE: yaml.load without SafeLoader
         obj = yaml.load(data, Loader=yaml.FullLoader)
         return jsonify({'result': str(obj)})
     except Exception as e:
@@ -1247,9 +1459,7 @@ def yaml_load():
 # ─── XPath Injection ───
 @app.route('/api/xpath/search', methods=['GET'])
 def xpath_search():
-    """VULNERABLE: XPath Injection"""
     q = request.args.get('q', '')
-    # Simulated XML data
     xml_data = """<?xml version="1.0"?>
     <users>
         <user><username>admin</username><password>admin123</password></user>
@@ -1258,7 +1468,6 @@ def xpath_search():
     </users>"""
     try:
         root = ET.fromstring(xml_data)
-        # VULNERABLE: XPath query built from user input
         xpath_query = f".//user[username='{q}']"
         results = root.findall(xpath_query)
         output = []
@@ -1274,17 +1483,13 @@ def xpath_search():
 # ─── LDAP Injection ───
 @app.route('/api/ldap/search', methods=['GET'])
 def ldap_search():
-    """VULNERABLE: LDAP Injection"""
     uid = request.args.get('uid', '')
-    # VULNERABLE: LDAP filter built from user input
     ldap_filter = f"(uid={uid})"
-    # Simulated LDAP search
     users = [
         {'uid': 'admin', 'cn': 'Administrator', 'mail': 'admin@bugbountymart.local'},
         {'uid': 'alice', 'cn': 'Alice Smith', 'mail': 'alice@example.com'},
         {'uid': 'bob', 'cn': 'Bob Jones', 'mail': 'bob@example.com'}
     ]
-    # Simulated vulnerable filter evaluation
     if '*)(uid=*' in uid or '(&' in uid:
         return jsonify({'results': users, 'filter': ldap_filter})
     result = [u for u in users if u['uid'] == uid]
@@ -1293,42 +1498,36 @@ def ldap_search():
 # ─── Clickjacking ───
 @app.route('/clickjacking-demo')
 def clickjacking_demo():
-    """VULNERABLE: Page without X-Frame-Options"""
     resp = make_response(render_template('clickjacking.html'))
-    # Intentionally missing X-Frame-Options
+    if get_config('x_frame_options_set', False):
+        resp.headers['X-Frame-Options'] = 'DENY'
+        resp.headers['Content-Security-Policy'] = "frame-ancestors 'none'"
     return resp
 
 # ─── PostMessage ───
 @app.route('/postmessage-demo')
 def postmessage_demo():
-    """VULNERABLE: PostMessage without origin validation"""
     return render_template('postmessage.html')
 
 # ─── Client-Side Template Injection ───
 @app.route('/csti-demo')
 def csti_demo():
-    """VULNERABLE: Client-side template injection with Vue.js"""
     return render_template('csti.html')
 
 # ─── Prototype Pollution ───
 @app.route('/api/config', methods=['GET'])
 def api_config():
-    """VULNERABLE: Prototype Pollution via query params"""
-    # Merge query params into config object (simulated)
     config = {'theme': 'light', 'admin': False}
     for key, value in request.args.items():
-        # VULNERABLE: Direct property assignment without validation
-        if key.startswith('__proto__') or key.startswith('constructor'):
-            # In a real app, this would pollute the prototype
-            pass
+        if get_config('prototype_pollution_protection', False):
+            if key.startswith('__proto__') or key.startswith('constructor'):
+                continue
         config[key] = value
     return jsonify(config)
 
 # ─── Cloud Storage Misconfiguration ───
 @app.route('/s3-bucket/<path:bucket_path>')
 def s3_bucket(bucket_path):
-    """VULNERABLE: Simulated S3 bucket with public access"""
-    # Simulating public S3 bucket listing
     return jsonify({
         'bucket': bucket_path,
         'contents': ['config.json', 'backup.zip', 'credentials.csv', 'private_keys/'],
@@ -1339,9 +1538,7 @@ def s3_bucket(bucket_path):
 # ─── Subdomain Takeover ───
 @app.route('/subdomain-check')
 def subdomain_check():
-    """VULNERABLE: Simulated subdomain takeover detection"""
     subdomain = request.args.get('subdomain', '')
-    # Simulated CNAME check
     cname_records = {
         'blog.bugbountymart.local': 'nonexistent.github.io',
         'shop.bugbountymart.local': 'bugbountymart.herokuapp.com',
@@ -1359,9 +1556,7 @@ def subdomain_check():
 # ─── DNS Zone Transfer ───
 @app.route('/dns/zone-transfer')
 def dns_zone_transfer():
-    """VULNERABLE: Simulated DNS zone transfer"""
     domain = request.args.get('domain', 'bugbountymart.local')
-    # VULNERABLE: No auth check for zone transfer
     zones = {
         'bugbountymart.local': {
             'A': {'www': '192.168.1.10', 'admin': '192.168.1.11', 'api': '192.168.1.12'},
@@ -1378,7 +1573,6 @@ def dns_zone_transfer():
 # ─── Virtual Host Enumeration ───
 @app.route('/vhost-check')
 def vhost_check():
-    """VULNERABLE: Virtual host discovery"""
     host = request.headers.get('Host', '')
     vhosts = {
         'admin.bugbountymart.local': {'status': 'active', 'note': 'Admin panel accessible'},
@@ -1394,7 +1588,6 @@ def vhost_check():
 # ─── Fuzzing & Hidden Parameters ───
 @app.route('/api/debug')
 def api_debug():
-    """VULNERABLE: Hidden debug endpoint"""
     debug = request.args.get('debug', '')
     admin = request.args.get('admin', '')
     if debug == 'true':
@@ -1412,15 +1605,19 @@ def api_debug():
     return jsonify({'message': 'API is working'})
 
 # ═══════════════════════════════════════════════════════════════
-# INFORMATION DISCLOSURE
+# INFORMATION DISCLOSURE (DIFFICULTY-AWARE)
 # ═══════════════════════════════════════════════════════════════
 
 @app.route('/.git/HEAD')
 def git_head():
+    if not get_config('git_exposed', True):
+        abort(404)
     return "ref: refs/heads/main\n"
 
 @app.route('/.git/config')
 def git_config():
+    if not get_config('git_exposed', True):
+        abort(404)
     return """[core]
     repositoryformatversion = 0
     filemode = true
@@ -1433,6 +1630,8 @@ def git_config():
 
 @app.route('/actuator/env')
 def actuator_env():
+    if not get_config('env_exposed', True):
+        abort(404)
     return jsonify({
         'DATABASE_URL': 'sqlite:///bugbounty.db',
         'SECRET_KEY': app.secret_key,
@@ -1503,6 +1702,8 @@ def sitemap():
 
 @app.route('/.env')
 def env_file():
+    if not get_config('env_exposed', True):
+        abort(404)
     return """SECRET_KEY=super_secret_key_12345
 DATABASE_URL=sqlite:///bugbounty.db
 AWS_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
@@ -1519,24 +1720,35 @@ def crossdomain():
 </cross-domain-policy>
 """
 
-# ─── Error Handlers (Info Disclosure) ───
+# ─── Error Handlers (DIFFICULTY-AWARE) ───
 
 @app.errorhandler(404)
 def not_found(e):
-    return f"""
-    <h1>404 Not Found</h1>
-    <p>The requested URL {request.path} was not found on this server.</p>
-    <p>Server: Werkzeug/3.0.3 Python/{os.sys.version_info.major}.{os.sys.version_info.minor}</p>
-    <p>Trace: {e}</p>
-    """, 404
+    if is_easy():
+        return f"""
+        <h1>404 Not Found</h1>
+        <p>The requested URL {request.path} was not found on this server.</p>
+        <p>Server: Werkzeug/3.0.3 Python/{os.sys.version_info.major}.{os.sys.version_info.minor}</p>
+        <p>Trace: {e}</p>
+        """, 404
+    elif is_medium():
+        return f"""
+        <h1>404 Not Found</h1>
+        <p>The requested URL was not found.</p>
+        """, 404
+    else:
+        return "<h1>Not Found</h1>", 404
 
 @app.errorhandler(500)
 def server_error(e):
-    import traceback
-    return f"""
-    <h1>500 Internal Server Error</h1>
-    <pre>{traceback.format_exc()}</pre>
-    """, 500
+    if get_config('error_show_stacktrace', False):
+        import traceback
+        return f"""
+        <h1>500 Internal Server Error</h1>
+        <pre>{traceback.format_exc()}</pre>
+        """, 500
+    else:
+        return "<h1>Internal Server Error</h1>", 500
 
 # ─── Main ───
 if __name__ == '__main__':
@@ -1546,10 +1758,15 @@ if __name__ == '__main__':
     os.makedirs('static/js', exist_ok=True)
     init_db()
     print("=" * 60)
-    print("BugBountyMart v2.0 — Ultimate Bug Bounty Practice Lab")
+    print(f"BugBountyMart v2.1 — Difficulty: {DIFFICULTY.upper()}")
     print("=" * 60)
     print("URL: http://127.0.0.1:5000")
     print("Admin: admin / admin123")
-    print("CTF Mode: http://127.0.0.1:5000/ctf")
+    print(f"CTF Mode: http://127.0.0.1:5000/ctf")
+    print(f"Points per challenge: {POINTS[DIFFICULTY]}")
+    print("=" * 60)
+    print(f"Config: verbose_errors={get_config('sqli_verbose_errors')}, "
+          f"rate_limit={get_config('auth_rate_limit')}, "
+          f"csrf={get_config('csrf_token_required')}")
     print("=" * 60)
     app.run(host='0.0.0.0', port=5000, debug=True)
