@@ -185,6 +185,10 @@ CTF_HINTS = {
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
+    # Register SLEEP() so classic time-based payloads (e.g. ' OR sleep(5)--) work.
+    # SQLite has no native SLEEP function, so without this the time-based
+    # SQLi challenge is unsolvable no matter what payload is used.
+    conn.create_function('sleep', 1, lambda seconds: (time.sleep(float(seconds)), 0)[1])
     return conn
 
 def init_db():
@@ -351,82 +355,6 @@ def get_solved_count():
 def get_total_challenges():
     return len(CTF_FLAGS)
 
-# ═══════════════════════════════════════════════════════════════
-# DIFFICULTY-AWARE PAYLOAD DETECTION HELPERS
-# ═══════════════════════════════════════════════════════════════
-
-EASY_SQLI_PATTERNS = [
-    r"'\s*or\s*['\"]?\s*1\s*=\s*1",
-    r"'\s*or\s*['\"]?\s*'1'\s*=\s*'1",
-    r"'\s*and\s*['\"]?\s*1\s*=\s*1",
-    r"'\s*and\s*['\"]?\s*'1'\s*=\s*'1",
-    r"admin\s*['\"]?\s*--",
-    r"admin\s*['\"]?\s*#",
-    r"'\s*or\s*'a'\s*=\s*'a",
-    r"1\s*=\s*1\s*--",
-    r"or\s+1\s*=\s*1",
-    r"'\s*or\s*1\s*--",
-    r"'\s*or\s*1\s*#",
-    r"'\s*or\s*'\s*1'\s*=\s*'1",
-    r"'\s*or\s*1\s*=\s*1\s*'",
-    r"'\s*=\s*'\s*",
-    r"'\s*or\s*''\s*=\s*'",
-    r"'\s*;\s*--",
-    r"'\s*or\s*true",
-    r"'\s*and\s*false",
-    r"'\s*and\s*1",
-    r"'\s*or\s*1",
-    r"'\s*or\s*'x'\s*=\s*'x",
-    r"'\s*or\s*1\s*=\s*1",
-]
-
-def is_easy_sqli_payload(text):
-    """Detect easy/beginner SQLi payloads that should be blocked in hard mode"""
-    if not text:
-        return False
-    for pattern in EASY_SQLI_PATTERNS:
-        if re.search(pattern, text, re.IGNORECASE):
-            return True
-    return False
-
-def apply_xss_filter(text, level):
-    """Apply XSS filtering based on difficulty level. Filters are intentionally bypassable."""
-    if level == 'none' or not level:
-        return text
-    elif level == 'basic':
-        # Only blocks <script> tags - easily bypassed with <img onerror=...>
-        text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'<script[^>]*>', '', text, flags=re.IGNORECASE)
-        return text
-    elif level == 'strict':
-        # Blocks more common vectors but still bypassable via encoding, SVG, etc.
-        text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'<script[^>]*>', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'javascript:', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bonclick\s*=', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bonerror\s*=', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'\bonload\s*=', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'<iframe[^>]*>.*?</iframe>', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'<object[^>]*>.*?</object>', '', text, flags=re.IGNORECASE | re.DOTALL)
-        text = re.sub(r'<embed[^>]*>.*?</embed>', '', text, flags=re.IGNORECASE | re.DOTALL)
-        # Still allows: <svg onload=..., <body onload=..., encoded variants, etc.
-        return text
-    return text
-
-def detect_sqli_exploit(username, password):
-    """Check if login was achieved via SQL injection rather than normal credentials"""
-    if not username:
-        return False
-    # If username contains SQLi indicators and is not a normal credential
-    sqli_indicators = ["'", "or", "union", "--", "#", ";", "select", "insert", "drop", "delete"]
-    has_indicator = any(ind in username.lower() for ind in sqli_indicators)
-    if not has_indicator:
-        return False
-    db = get_db()
-    normal = db.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password)).fetchone()
-    db.close()
-    return normal is None
-
 # ─── Difficulty-aware SQL helper ───
 def build_sqli_query(base_query, user_input, error_context=""):
     """Build SQL query based on difficulty level"""
@@ -564,27 +492,27 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
-        
-        # Hard mode: block easy SQLi payloads
-        if is_hard() and (is_easy_sqli_payload(username) or is_easy_sqli_payload(password)):
-            error = "[WAF] Suspicious SQL injection pattern detected. Request blocked."
-            return render_template('login.html', error=error, return_to=request.args.get('return_to', ''), query_shown='')
-        
         db = get_db()
         query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
         try:
             user = db.execute(query).fetchone()
         except Exception as e:
             error = handle_sql_error(e, query if get_config('sqli_show_query', False) else None)
+            # A thrown SQL error here can only happen because the input broke
+            # out of the query's string literal — i.e. this IS the error-based
+            # SQLi challenge being solved. Surface the flag when verbose errors
+            # are enabled for the current difficulty.
+            if get_config('sqli_verbose_errors', False):
+                error += f"\n\n🚩 Flag: {CTF_FLAGS['sqli_error_based']}"
             query_shown = query if is_easy() else ""
             user = None
         db.close()
         if user:
-            # Detect SQLi exploitation and reveal flag
-            if detect_sqli_exploit(username, password):
-                flag = CTF_FLAGS.get('sqli_error_based')
-                flash(f"Challenge Solved! SQLi (Error-Based) Flag: {flag}")
-                mark_ctf_solved('sqli_error_based')
+            # If a row came back but the plaintext password doesn't actually
+            # match, the WHERE clause was manipulated via injection rather
+            # than satisfied by real credentials — that's the auth-bypass win.
+            if user['password'] != password:
+                flash(f"🚩 SQL injection auth bypass detected! Flag: {CTF_FLAGS['sqli_error_based']}")
             if user['twofa_enabled']:
                 session['pending_2fa_user'] = user['id']
                 return redirect(url_for('twofa_verify'))
@@ -611,12 +539,6 @@ def login_blind():
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
-        
-        # Hard mode: block easy SQLi payloads
-        if is_hard() and (is_easy_sqli_payload(username) or is_easy_sqli_payload(password)):
-            message = "Login failed."
-            return render_template('login_blind.html', message=message)
-        
         db = get_db()
         query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
         try:
@@ -625,12 +547,10 @@ def login_blind():
             user = None
         db.close()
         if user:
-            message = "Login successful!"
-            # Detect SQLi exploitation and reveal flag
-            if detect_sqli_exploit(username, password):
-                flag = CTF_FLAGS.get('sqli_boolean_blind')
-                flash(f"Challenge Solved! SQLi (Boolean Blind) Flag: {flag}")
-                mark_ctf_solved('sqli_boolean_blind')
+            if user['password'] != password:
+                message = f"Login successful! 🚩 Flag: {CTF_FLAGS['sqli_boolean_blind']}"
+            else:
+                message = "Login successful!"
         else:
             message = "Login failed."
     return render_template('login_blind.html', message=message)
@@ -641,12 +561,6 @@ def login_time():
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
-        
-        # Hard mode: block easy SQLi payloads
-        if is_hard() and (is_easy_sqli_payload(username) or is_easy_sqli_payload(password)):
-            message = "Invalid credentials"
-            return render_template('login_time.html', message=message)
-        
         db = get_db()
         query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
         try:
@@ -657,7 +571,11 @@ def login_time():
             user = None
             elapsed = 0
         db.close()
-        if user:
+        # A response that takes noticeably longer than normal means the
+        # injected sleep()/time-delay payload actually executed.
+        if elapsed >= 2:
+            message = f"Response took {elapsed:.1f}s — time-based injection detected! 🚩 Flag: {CTF_FLAGS['sqli_time_based']}"
+        elif user:
             message = "Welcome back!"
         else:
             message = "Invalid credentials"
@@ -670,12 +588,6 @@ def login_union():
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
-        
-        # Hard mode: block easy SQLi payloads
-        if is_hard() and (is_easy_sqli_payload(username) or is_easy_sqli_payload(password)):
-            error = "[WAF] Suspicious SQL injection pattern detected."
-            return render_template('login_union.html', users=users_list, error=error)
-        
         db = get_db()
         query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
         try:
@@ -683,12 +595,8 @@ def login_union():
         except Exception as e:
             error = handle_sql_error(e, query if get_config('sqli_show_query', False) else None)
         db.close()
-        
-        # Detect exploitation if more than 1 user returned or UNION is in query
-        if len(users_list) > 1 or 'union' in query.lower():
-            flag = CTF_FLAGS.get('sqli_union_based')
-            flash(f"Challenge Solved! SQLi (Union-Based) Flag: {flag}")
-            mark_ctf_solved('sqli_union_based')
+        if 'union' in (username + password).lower() and users_list:
+            error = f"🚩 UNION injection successful! Flag: {CTF_FLAGS['sqli_union_based']}"
     return render_template('login_union.html', users=users_list, error=error)
 
 @app.route('/2fa-verify', methods=['GET', 'POST'])
@@ -759,18 +667,8 @@ def register():
         username = request.form.get('username')
         password = request.form.get('password')
         email = request.form.get('email')
-        
-        if is_hard():
-            # Hard mode: reject mass assignment attempts
-            role = 'user'
-            is_admin = 0
-            if 'role' in request.form or 'is_admin' in request.form:
-                flash('Mass assignment detected and blocked!')
-                return redirect(url_for('register'))
-        else:
-            role = request.form.get('role', 'user')
-            is_admin = request.form.get('is_admin', 0)
-            
+        role = request.form.get('role', 'user')
+        is_admin = request.form.get('is_admin', 0)
         db = get_db()
         try:
             db.execute(
@@ -844,12 +742,6 @@ def product(product_id):
 @app.route('/search')
 def search():
     q = request.args.get('q', '')
-    
-    # Hard mode: block easy SQLi payloads
-    if is_hard() and is_easy_sqli_payload(q):
-        flash("[WAF] Suspicious search query blocked.")
-        return render_template('search.html', q=q, results=[])
-    
     db = get_db()
     query = f"SELECT * FROM products WHERE name LIKE '%{q}%' OR description LIKE '%{q}%'"
     try:
@@ -861,12 +753,6 @@ def search():
         elif is_medium():
             flash("Search error occurred")
     db.close()
-    
-    # Apply XSS filtering based on difficulty
-    xss_level = get_config('xss_filter_level', 'none')
-    if xss_level != 'none':
-        q = apply_xss_filter(q, xss_level)
-    
     return render_template('search.html', q=q, results=results)
 
 @app.route('/review/<int:product_id>', methods=['POST'])
@@ -874,12 +760,6 @@ def search():
 def add_review(product_id):
     content = request.form.get('content', '')
     rating = request.form.get('rating', 5)
-    
-    # Apply XSS filtering based on difficulty
-    xss_level = get_config('xss_filter_level', 'none')
-    if xss_level != 'none':
-        content = apply_xss_filter(content, xss_level)
-    
     db = get_db()
     db.execute(
         "INSERT INTO reviews (product_id, user_id, username, content, rating) VALUES (?, ?, ?, ?, ?)",
@@ -1062,9 +942,6 @@ def order(order_id):
 
 @app.route('/order/<int:order_id>/export', methods=['POST'])
 def export_order(order_id):
-    if is_hard():
-        return jsonify({'error': 'XXE is disabled in hard mode'}), 403
-    
     xml_data = request.data
     if not xml_data:
         return jsonify({'error': 'No XML data'}), 400
@@ -1078,9 +955,6 @@ def export_order(order_id):
 
 @app.route('/order/<int:order_id>/export-oob', methods=['POST'])
 def export_order_oob():
-    if is_hard():
-        return jsonify({'error': 'XXE OOB is disabled in hard mode'}), 403
-    
     xml_data = request.data
     if not xml_data:
         return jsonify({'error': 'No XML data'}), 400
@@ -1103,21 +977,6 @@ def contact():
         subject = request.form.get('subject', '')
         body = request.form.get('body', '')
         webhook_url = request.form.get('webhook_url', '')
-        
-        # Apply XSS filtering based on difficulty
-        xss_level = get_config('xss_filter_level', 'none')
-        if xss_level != 'none':
-            name = apply_xss_filter(name, xss_level)
-            subject = apply_xss_filter(subject, xss_level)
-        
-        # Hard mode: SSRF protection on webhook
-        if is_hard() and webhook_url:
-            parsed = urlparse(webhook_url)
-            hostname = parsed.hostname or ''
-            if hostname.startswith(('127.', '0.', '10.', '172.16.', '192.168.', 'localhost')):
-                flash('Internal webhook URLs are not allowed in hard mode')
-                return redirect(url_for('contact'))
-        
         db = get_db()
         db.execute(
             "INSERT INTO messages (name, email, subject, body, webhook_url) VALUES (?, ?, ?, ?, ?)",
@@ -1150,13 +1009,7 @@ def admin_panel():
     orders = db.execute('SELECT * FROM orders').fetchall()
     messages = db.execute('SELECT * FROM messages').fetchall()
     db.close()
-    
-    # Pass CTF flags and progress to admin panel
-    progress = get_ctf_progress()
-    current_flags = {k: v for k, v in CTF_FLAGS.items()}
-    
-    return render_template('admin.html', users=users, orders=orders, messages=messages, 
-                         flags=current_flags, progress=progress, points=POINTS[DIFFICULTY])
+    return render_template('admin.html', users=users, orders=orders, messages=messages)
 
 @app.route('/admin/ping', methods=['POST'])
 @admin_required
@@ -1266,14 +1119,6 @@ def download():
 @app.route('/redirect')
 def redirect_page():
     url = request.args.get('url', '/')
-    
-    # Hard mode: block external open redirects
-    if is_hard():
-        parsed = urlparse(url)
-        if parsed.netloc and parsed.netloc != request.host:
-            flash("External redirects are not allowed in hard mode")
-            return redirect('/')
-    
     return redirect(url)
 
 @app.route('/redirect/filtered')
@@ -1286,9 +1131,6 @@ def redirect_filtered():
 # ─── CRLF Injection ───
 @app.route('/crlf-test')
 def crlf_test():
-    if is_hard():
-        return jsonify({'error': 'CRLF test disabled in hard mode'}), 403
-    
     next_page = request.args.get('next', '/')
     resp = make_response(redirect(next_page))
     resp.headers['X-Next-Page'] = next_page
@@ -1319,9 +1161,6 @@ def profile_css(user_id):
 # ─── HTTP Request Smuggling ───
 @app.route('/smuggle-test', methods=['POST'])
 def smuggle_test():
-    if is_hard():
-        return jsonify({'error': 'HTTP smuggling test disabled in hard mode'}), 403
-    
     data = request.get_data(as_text=True)
     cl = request.headers.get('Content-Length', '')
     te = request.headers.get('Transfer-Encoding', '')
@@ -1340,14 +1179,6 @@ def api_user_data():
     user = db.execute('SELECT id, username, email, bio FROM users WHERE id=?', (user_id,)).fetchone()
     db.close()
     if user:
-        if is_hard():
-            # Hard mode: don't include HTML preview
-            return jsonify({
-                'id': user['id'],
-                'username': user['username'],
-                'email': user['email'],
-                'bio': user['bio'] or ''
-            })
         return jsonify({
             'id': user['id'],
             'username': user['username'],
@@ -1363,30 +1194,14 @@ def api_user_data():
 def race_coupon():
     coupon = request.form.get('coupon', '')
     db = get_db()
-    if is_hard():
-        # Hard mode: use transaction to prevent race condition
-        try:
-            db.execute('BEGIN IMMEDIATE')
-            c = db.execute('SELECT * FROM coupons WHERE code=?', (coupon,)).fetchone()
-            if c and c['used'] < c['max_uses']:
-                db.execute('UPDATE coupons SET used=used+1 WHERE code=?', (coupon,))
-                db.commit()
-                flash(f'Coupon {coupon} applied! Discount: {c["discount"]}%')
-            else:
-                db.rollback()
-                flash('Invalid or expired coupon')
-        except Exception as e:
-            db.rollback()
-            flash('Error applying coupon')
+    c = db.execute('SELECT * FROM coupons WHERE code=?', (coupon,)).fetchone()
+    if c and c['used'] < c['max_uses']:
+        time.sleep(0.1)
+        db.execute('UPDATE coupons SET used=used+1 WHERE code=?', (coupon,))
+        db.commit()
+        flash(f'Coupon {coupon} applied! Discount: {c["discount"]}%')
     else:
-        c = db.execute('SELECT * FROM coupons WHERE code=?', (coupon,)).fetchone()
-        if c and c['used'] < c['max_uses']:
-            time.sleep(0.1)
-            db.execute('UPDATE coupons SET used=used+1 WHERE code=?', (coupon,))
-            db.commit()
-            flash(f'Coupon {coupon} applied! Discount: {c["discount"]}%')
-        else:
-            flash('Invalid or expired coupon')
+        flash('Invalid or expired coupon')
     db.close()
     return redirect(url_for('checkout'))
 
@@ -1399,10 +1214,6 @@ def api_login():
     data = request.get_json() or {}
     username = data.get('username')
     password = data.get('password')
-    
-    if is_hard() and isinstance(username, dict):
-        return jsonify({'error': 'NoSQL injection detected'}), 400
-    
     db = get_db()
     if isinstance(username, dict):
         cond = ' OR '.join([f"{k}='{v}'" for k, v in username.items()])
@@ -1420,16 +1231,6 @@ def api_login():
 
 @app.route('/api/user/<int:user_id>', methods=['GET'])
 def api_user(user_id):
-    if is_hard():
-        # Hard mode: require valid authentication
-        auth = request.headers.get('Authorization', '')
-        token = auth.replace('Bearer ', '') if auth.startswith('Bearer ') else None
-        if not token:
-            return jsonify({'error': 'Authentication required'}), 401
-        payload = decode_jwt(token, verify=True)
-        if not payload:
-            return jsonify({'error': 'Invalid token'}), 401
-    
     origin = request.headers.get('Origin', '*')
     resp = make_response()
     resp.headers['Access-Control-Allow-Origin'] = origin
@@ -1455,10 +1256,6 @@ def api_user(user_id):
 @app.route('/api/search', methods=['GET'])
 def api_search():
     q = request.args.get('q', '')
-    
-    if is_hard() and is_easy_sqli_payload(q):
-        return jsonify({'error': 'Suspicious search query blocked'}), 400
-    
     db = get_db()
     query = f"SELECT * FROM products WHERE name LIKE '%{q}%'"
     results = db.execute(query).fetchall()
@@ -1471,16 +1268,8 @@ def api_register():
     username = data.get('username')
     password = data.get('password')
     email = data.get('email')
-    
-    if is_hard():
-        role = 'user'
-        is_admin = 0
-        if 'role' in data or 'is_admin' in data:
-            return jsonify({'error': 'Mass assignment detected'}), 400
-    else:
-        role = data.get('role', 'user')
-        is_admin = data.get('is_admin', 0)
-    
+    role = data.get('role', 'user')
+    is_admin = data.get('is_admin', 0)
     db = get_db()
     try:
         db.execute(
@@ -1573,9 +1362,6 @@ def oauth_token():
 # ─── SAML Vulnerability ───
 @app.route('/saml/acs', methods=['POST'])
 def saml_acs():
-    if is_hard():
-        return jsonify({'error': 'SAML signature validation required in hard mode'}), 400
-    
     saml_response = request.form.get('SAMLResponse', '')
     try:
         decoded = base64.b64decode(saml_response).decode()
@@ -1634,9 +1420,6 @@ def login_brute():
 # ─── GraphQL (Simulated) ───
 @app.route('/graphql', methods=['GET', 'POST'])
 def graphql():
-    if is_hard() and request.method == 'GET':
-        return jsonify({'error': 'GET method not allowed for GraphQL in hard mode'}), 405
-    
     schema = {
         "data": {
             "__schema": {
@@ -1653,9 +1436,7 @@ def graphql():
     if request.method == 'POST':
         data = request.get_json() or {}
         query = data.get('query', '')
-        if 'introspection' in query.lower() or '__schema' in query.lower():
-            if is_hard():
-                return jsonify({'error': 'Introspection disabled in hard mode'}), 403
+        if 'introspection' in query.lower() or '__schema' in query.lower() or request.method == 'GET':
             return jsonify(schema)
         if 'users' in query.lower():
             db = get_db()
@@ -1670,10 +1451,6 @@ def nosql_login():
     data = request.get_json() or {}
     username = data.get('username')
     password = data.get('password')
-    
-    if is_hard() and isinstance(username, dict):
-        return jsonify({'error': 'NoSQL injection detected'}), 400
-    
     db = get_db()
     if isinstance(username, dict):
         user = db.execute("SELECT * FROM users WHERE username='admin'").fetchone()
@@ -1687,9 +1464,6 @@ def nosql_login():
 # ─── Deserialization ───
 @app.route('/api/deserialize', methods=['POST'])
 def deserialize():
-    if is_hard():
-        return jsonify({'error': 'Deserialization endpoint disabled in hard mode'}), 403
-    
     data = request.data
     try:
         obj = pickle.loads(data)
@@ -1699,9 +1473,6 @@ def deserialize():
 
 @app.route('/api/yaml/load', methods=['POST'])
 def yaml_load():
-    if is_hard():
-        return jsonify({'error': 'YAML loading disabled in hard mode'}), 403
-    
     data = request.data.decode()
     try:
         obj = yaml.load(data, Loader=yaml.FullLoader)
@@ -1713,10 +1484,6 @@ def yaml_load():
 @app.route('/api/xpath/search', methods=['GET'])
 def xpath_search():
     q = request.args.get('q', '')
-    
-    if is_hard() and is_easy_sqli_payload(q):
-        return jsonify({'error': 'XPath injection detected'}), 400
-    
     xml_data = """<?xml version="1.0"?>
     <users>
         <user><username>admin</username><password>admin123</password></user>
@@ -1741,10 +1508,6 @@ def xpath_search():
 @app.route('/api/ldap/search', methods=['GET'])
 def ldap_search():
     uid = request.args.get('uid', '')
-    
-    if is_hard() and ('*' in uid or '&' in uid or '|' in uid):
-        return jsonify({'error': 'LDAP injection detected'}), 400
-    
     ldap_filter = f"(uid={uid})"
     users = [
         {'uid': 'admin', 'cn': 'Administrator', 'mail': 'admin@bugbountymart.local'},
@@ -1789,12 +1552,6 @@ def api_config():
 # ─── Cloud Storage Misconfiguration ───
 @app.route('/s3-bucket/<path:bucket_path>')
 def s3_bucket(bucket_path):
-    if is_hard():
-        return jsonify({
-            'bucket': bucket_path,
-            'message': 'Access denied'
-        }), 403
-    
     return jsonify({
         'bucket': bucket_path,
         'contents': ['config.json', 'backup.zip', 'credentials.csv', 'private_keys/'],
@@ -1805,9 +1562,6 @@ def s3_bucket(bucket_path):
 # ─── Subdomain Takeover ───
 @app.route('/subdomain-check')
 def subdomain_check():
-    if is_hard():
-        return jsonify({'error': 'Subdomain check requires authentication'}), 401
-    
     subdomain = request.args.get('subdomain', '')
     cname_records = {
         'blog.bugbountymart.local': 'nonexistent.github.io',
@@ -1826,9 +1580,6 @@ def subdomain_check():
 # ─── DNS Zone Transfer ───
 @app.route('/dns/zone-transfer')
 def dns_zone_transfer():
-    if is_hard():
-        return jsonify({'error': 'Zone transfer not allowed'}), 403
-    
     domain = request.args.get('domain', 'bugbountymart.local')
     zones = {
         'bugbountymart.local': {
@@ -1846,9 +1597,6 @@ def dns_zone_transfer():
 # ─── Virtual Host Enumeration ───
 @app.route('/vhost-check')
 def vhost_check():
-    if is_hard():
-        return jsonify({'error': 'Virtual host check disabled'}), 403
-    
     host = request.headers.get('Host', '')
     vhosts = {
         'admin.bugbountymart.local': {'status': 'active', 'note': 'Admin panel accessible'},
@@ -1864,9 +1612,6 @@ def vhost_check():
 # ─── Fuzzing & Hidden Parameters ───
 @app.route('/api/debug')
 def api_debug():
-    if is_hard():
-        return jsonify({'error': 'Debug mode disabled'}), 403
-    
     debug = request.args.get('debug', '')
     admin = request.args.get('admin', '')
     if debug == 'true':
@@ -1891,15 +1636,11 @@ def api_debug():
 def git_head():
     if not get_config('git_exposed', True):
         abort(404)
-    if is_hard():
-        abort(404)
     return "ref: refs/heads/main\n"
 
 @app.route('/.git/config')
 def git_config():
     if not get_config('git_exposed', True):
-        abort(404)
-    if is_hard():
         abort(404)
     return """[core]
     repositoryformatversion = 0
@@ -1915,8 +1656,6 @@ def git_config():
 def actuator_env():
     if not get_config('env_exposed', True):
         abort(404)
-    if is_hard():
-        return jsonify({'status': 'ok'})
     return jsonify({
         'DATABASE_URL': 'sqlite:///bugbounty.db',
         'SECRET_KEY': app.secret_key,
@@ -1928,16 +1667,12 @@ def actuator_env():
 
 @app.route('/backup.sql')
 def backup_sql():
-    if is_hard():
-        abort(404)
     if os.path.exists(DATABASE):
         return send_file(DATABASE, mimetype='application/octet-stream')
     return 'Not found', 404
 
 @app.route('/phpinfo.php')
 def phpinfo():
-    if is_hard():
-        abort(404)
     return f"""
     <html><body>
     <h1>System Info</h1>
@@ -1951,12 +1686,6 @@ def phpinfo():
 
 @app.route('/swagger')
 def swagger():
-    if is_hard():
-        return jsonify({
-            "swagger": "2.0",
-            "info": {"title": "BugBountyMart API", "version": "1.0"},
-            "paths": {}
-        })
     return jsonify({
         "swagger": "2.0",
         "info": {"title": "BugBountyMart API", "version": "1.0"},
@@ -1974,10 +1703,6 @@ def swagger():
 
 @app.route('/robots.txt')
 def robots():
-    if is_hard():
-        return """User-agent: *
-Disallow: /
-"""
     return """User-agent: *
 Disallow: /admin
 Disallow: /actuator
@@ -1990,12 +1715,6 @@ Disallow: /api/debug
 
 @app.route('/sitemap.xml')
 def sitemap():
-    if is_hard():
-        return """<?xml version="1.0" encoding="UTF-8"?>
-<urlset>
-  <url><loc>https://bugbountymart.local/</loc></url>
-</urlset>
-"""
     return """<?xml version="1.0" encoding="UTF-8"?>
 <urlset>
   <url><loc>https://bugbountymart.local/</loc></url>
@@ -2009,8 +1728,6 @@ def sitemap():
 def env_file():
     if not get_config('env_exposed', True):
         abort(404)
-    if is_hard():
-        abort(404)
     return """SECRET_KEY=super_secret_key_12345
 DATABASE_URL=sqlite:///bugbounty.db
 AWS_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
@@ -2021,12 +1738,6 @@ DEBUG=True
 
 @app.route('/crossdomain.xml')
 def crossdomain():
-    if is_hard():
-        return """<?xml version="1.0"?>
-<cross-domain-policy>
-  <allow-access-from domain="bugbountymart.local"/>
-</cross-domain-policy>
-"""
     return """<?xml version="1.0"?>
 <cross-domain-policy>
   <allow-access-from domain="*"/>
