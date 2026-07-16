@@ -7,36 +7,6 @@
         <span class="badge badge-danger">ADMIN ONLY</span>
     </div>
 
-    <!-- CTF FLAGS SECTION -->
-    <div class="card" style="background: linear-gradient(135deg, #1a1a2e, #252542); border: 1px solid #6366f1;">
-        <h3><i class="fas fa-flag" style="color: #eab308;"></i> CTF Flags — Current Difficulty: <span class="badge badge-warning">{{ difficulty.upper() }}</span></h3>
-        <p class="text-muted">Solve challenges to collect flags. Points per challenge: <strong>{{ points }}</strong></p>
-        
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-top: 1rem;">
-            {% for vuln_name, flag in flags.items() %}
-            <div class="code-block" style="font-size: 0.8rem; padding: 0.75rem; border-radius: 8px; background: #0f0f1a; border: 1px solid #2a2a4a;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                    <strong style="color: #6366f1; text-transform: uppercase;">{{ vuln_name.replace('_', ' ') }}</strong>
-                    {% if vuln_name in progress %}
-                        <span class="badge badge-success">SOLVED</span>
-                    {% else %}
-                        <span class="badge badge-warning">UNSOLVED</span>
-                    {% endif %}
-                </div>
-                <code style="color: #22c55e;">{{ flag }}</code>
-            </div>
-            {% endfor %}
-        </div>
-        
-        <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(99,102,241,0.1); border-radius: 8px; border-left: 3px solid #6366f1;">
-            <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">
-                <i class="fas fa-info-circle"></i> 
-                <strong>Progress:</strong> {{ progress|length }} / {{ flags|length }} solved | 
-                <strong>Total Points:</strong> {{ progress.values()|sum(attribute='points') }}
-            </p>
-        </div>
-    </div>
-
     <div class="admin-grid">
         <div class="card">
             <h3>Users</h3>
